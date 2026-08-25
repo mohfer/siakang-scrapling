@@ -37,6 +37,9 @@ class FakeCurlCookies:
     def __init__(self):
         self._d = {"siakang_session": "abc123"}
 
+    def set(self, name, value):
+        self._d[name] = value
+
     def get_dict(self):
         return dict(self._d)
 

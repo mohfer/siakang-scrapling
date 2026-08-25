@@ -18,9 +18,9 @@ from conftest import (
     grades_table_html,
     jadwal_page,
     list_semesters_page,
-    schedule_card,
     login_html,
     lw_response,
+    schedule_card,
     semester_card,
 )
 
@@ -157,6 +157,58 @@ class TestLogin:
         with pytest.raises(SiakangUpstreamError):
             SiakangClient(email="a@b.c", password="p").__enter__()
         assert inner.closed is True
+
+
+class TestSessionPersistence:
+    def _client(self, monkeypatch, handlers, **kw):
+        inner = FakeSession(handlers)
+        monkeypatch.setattr("siakang.client.FetcherSession", lambda: FakeFetcherSession(inner))
+        return SiakangClient(email="a@b.c", password="pw", **kw).__enter__(), inner
+
+    def test_saves_cookies_after_login(self, monkeypatch, tmp_path):
+        path = tmp_path / "sess.json"
+        self._client(monkeypatch, make_handlers(), session_file=path)
+        saved = json.loads(path.read_text())
+        assert "siakang_session" in saved
+
+    def test_valid_saved_session_skips_login(self, monkeypatch, tmp_path):
+        # no /auth/login routes registered: entering must not touch them
+        handlers = [("GET", lambda u: "dashboard-akademik" in u,
+                     lambda u, k: FakeResponse(dashboard_html(),
+                                               url=f"{BASE}/dashboard/dashboard-akademik"))]
+        path = tmp_path / "sess.json"
+        path.write_text(json.dumps({"siakang_session": "saved"}))
+        client, inner = self._client(monkeypatch, handlers, session_file=path)
+        assert client._csrf == CSRF
+        assert all("/auth/login" not in u for _, u in inner.calls)
+
+    def test_expired_session_falls_back_to_full_login(self, monkeypatch, tmp_path):
+        state = {"logged_in": False}
+
+        def dash(u, k):  # expired cookie -> server bounces to the login page
+            if not state["logged_in"]:
+                return FakeResponse(login_html(), url=f"{BASE}/auth/login")
+            return FakeResponse(dashboard_html(), url=f"{BASE}/dashboard/dashboard-akademik")
+
+        def login_post(u, k):
+            state["logged_in"] = True
+            return FakeResponse("", status=302)
+
+        handlers = [
+            ("GET", lambda u: "dashboard-akademik" in u, dash),
+            ("GET", lambda u: u.endswith("/auth/login"),
+             lambda u, k: FakeResponse(login_html(), url=u)),
+            ("POST", lambda u: u.endswith("/auth/login"), login_post),
+        ]
+        path = tmp_path / "sess.json"
+        path.write_text(json.dumps({"siakang_session": "stale"}))
+        client, inner = self._client(monkeypatch, handlers, session_file=path)
+        assert any(m == "POST" and u.endswith("/auth/login") for m, u in inner.calls)
+
+    def test_default_paths_differ_per_account(self, tmp_path):
+        a = SiakangClient(email="a@b.c", password="p", session_file=True)._session_cookie_path()
+        b = SiakangClient(email="other@b.c", password="p", session_file=True)._session_cookie_path()
+        assert a != b
 
 
 class TestGuards:

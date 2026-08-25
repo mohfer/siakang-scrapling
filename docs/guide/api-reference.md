@@ -15,6 +15,32 @@ The `with` block handles logging in and out for you. Every method below must be
 called on a client opened this way — otherwise you get the error
 *"Client is not open"*.
 
+## Constructor Options
+
+```python
+SiakangClient(email, password, cache=None, max_workers=4, session_file=None)
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `cache` | object with `get(key)` / `set(key, value)` | `None` | Caches parallel-class lookups (`schedule_id` → class letter) across runs. Use [`FileCache`](#constructor-options) for development, Redis/DB-backed stores for production. |
+| `max_workers` | `int` | `4` | Parallel fetches when resolving class letters. |
+| `session_file` | `str \| Path \| bool \| None` | `None` | Persists login cookies so later runs skip the login round-trip. `True` uses a per-account file derived from the email hash (each account gets its own file); a path string uses that exact file. Expired sessions automatically fall back to a full login. |
+
+```python
+from siakang import FileCache
+
+client = SiakangClient(email, password,
+                       cache=FileCache(),       # reuse class-letter lookups
+                       session_file=True)       # skip re-login between runs
+```
+
+::: warning session_file holds live credentials
+The session file contains valid login cookies — treat it like a password.
+Its location follows the current working directory unless you pass an explicit
+path, and it should never be committed to version control.
+:::
+
 ---
 
 ## Quick Overview

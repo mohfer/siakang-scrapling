@@ -12,7 +12,7 @@ from siakang import SiakangClient, api_response
 
 @api_response
 def fetch_grades(email: str, password: str, semester: str | None):
-    with SiakangClient(email, password) as client:
+    with SiakangClient(email, password, session_file=True) as client:
         return client.get_grades(semester=semester)
 
 

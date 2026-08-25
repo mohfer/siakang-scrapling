@@ -3,10 +3,12 @@
 All Livewire interactions are performed directly against /livewire/update.
 """
 
+import hashlib
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
 from html import unescape
+from pathlib import Path
 
 from curl_cffi import requests as cffi_requests
 from scrapling.fetchers import FetcherSession
@@ -88,22 +90,64 @@ def _parse_tables(html: str) -> list[dict]:
 
 
 class SiakangClient:
-    def __init__(self, email: str, password: str, cache=None, max_workers: int = 4):
+    def __init__(self, email: str, password: str, cache=None, max_workers: int = 4,
+                 session_file: str | Path | bool | None = None):
         """
         cache: object exposing get(key)/set(key, value); default None (no caching).
                See siakang.cache.FileCache; swap in Redis/DB for production.
+        session_file: persist login cookies so later runs skip the login round-trip.
+               True  -> default path derived from the email hash, so each account
+                        gets its own file and sessions never collide.
+               path  -> that exact file (shared across accounts = they overwrite
+                        each other; don't do that for different accounts).
+               None  -> disabled (default).
+               The file holds a bearer credential — keep it out of git.
         """
         self.email = email
         self.password = password
         self.cache = cache
         self.max_workers = max_workers
+        self.session_file = session_file
         self._session = None
 
     # -- lifecycle ---------------------------------------------------------
 
+    def _session_cookie_path(self) -> Path:
+        if self.session_file is True:
+            digest = hashlib.sha1(self.email.encode()).hexdigest()[:10]
+            return Path(f".siakang_session_{digest}.json")
+        return Path(self.session_file)
+
+    def _restore_session(self) -> bool:
+        """Load saved cookies and verify they still authenticate us."""
+        try:
+            cookies = json.loads(self._session_cookie_path().read_text())
+            jar = self._session._curl_session.cookies
+            for name, value in cookies.items():
+                jar.set(name, value)
+            r = self._session.get(f"{BASE}/dashboard/dashboard-akademik")
+        except Exception:
+            return False
+        ok = r.status == 200 and "/auth/login" not in str(getattr(r, "url", ""))
+        if ok:
+            m = re.search(r'data-csrf="([^"]+)"', getattr(r, "html_content", ""))
+            if m:
+                self._csrf = m.group(1)
+        return ok
+
+    def _save_session(self):
+        path = self._session_cookie_path()
+        path.write_text(json.dumps(self._session._curl_session.cookies.get_dict()))
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
+
     def __enter__(self):
         self._session = FetcherSession().__enter__()
         try:
+            if self.session_file and self._restore_session():
+                return self
             page = self._session.get(f"{BASE}/auth/login")
             tokens = page.css('input[name="_token"]')
             if not tokens:
@@ -116,6 +160,8 @@ class SiakangClient:
             # a failed login lands back on the login page with HTTP 200
             if r.status != 200 or "auth/login" in str(getattr(r, "url", "")):
                 raise SiakangAuthError("Login failed — check email/password")
+            if self.session_file:
+                self._save_session()
         except SiakangError:
             self._session.__exit__(None, None, None)  # don't leak the session
             raise

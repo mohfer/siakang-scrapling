@@ -128,6 +128,20 @@ For production apps backed by Redis or a database, pass any object exposing
 `get(key)` / `set(key, value)`. Each `SiakangClient` instance owns an isolated
 HTTP session — create one per logged-in user and never share it across threads.
 
+### Skip re-login between runs
+
+Pass `session_file=True` and login cookies are saved to a per-account file, so the
+next run restores the session instead of logging in again (expired sessions fall
+back to a full login automatically):
+
+```python
+client = SiakangClient(email, password, session_file=True)
+# cookies stored in .siakang_session_<email-hash>.json — one file per account,
+# or pass an explicit path to choose your own location.
+```
+
+The session file contains live login cookies — treat it like a password.
+
 ## How It Works
 
 Siakang is a Laravel + Livewire application. Instead of running a browser, this
