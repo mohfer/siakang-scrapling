@@ -36,13 +36,10 @@ def main():
     elif not response.ok:
         print(f"Error {response.code}: {response.message}")
     else:
-        rows = response.data
-        print("| Code | Course Content | Lecturer | Credits | Day | Time |")
-        print("|---|---|---|---|---|---|")
-        for r in rows:
-            first = r["schedules"][0] if r["schedules"] else {"day": "", "time": ""}
-            lecturer = ", ".join(r["lecturers"])
-            print(f"| {r['code']} | {r['name']} | {lecturer} | {r['credits']} | {first['day']} | {first['time']} |")
+        # same loop as docs/guide/getting-started.md §3
+        for row in response.data:
+            sesi = row["schedules"][0]
+            print(f"{row['code']} {row['name']} — {sesi['day']} {sesi['time']}")
     print(f"\nElapsed: {time.perf_counter() - start:.2f}s")
 
 

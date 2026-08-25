@@ -29,6 +29,10 @@ class FakeResponse:
             self.html_content = body
             self.body = body.encode()
 
+    @property
+    def text(self):
+        return self.html_content
+
     def css(self, selector):
         return Selector(self.html_content).css(selector)
 

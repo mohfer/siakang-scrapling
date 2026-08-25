@@ -66,7 +66,7 @@ class TestHydrateLazy:
         c = object.__new__(SiakangClient)
         seen = []
 
-        def fake_commit(url, snapshot, updates=None, calls=None):
+        def fake_commit(url, snapshot, updates=None, calls=None, session=None, token=None):
             idx = len(seen)
             seen.append(snapshot)
             return responses[min(idx, len(responses) - 1)]

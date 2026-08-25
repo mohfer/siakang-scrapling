@@ -15,7 +15,7 @@ SEMESTER=20252
 Class schedule from `/jadwal_perkuliahan`.
 
 ```bash
-uv run python examples/scrape_schedule.py                    # compact table
+uv run python examples/scrape_schedule.py                    # one line per course
 uv run python examples/scrape_schedule.py --json             # full JSON envelope
 uv run python examples/scrape_schedule.py --semester 20252   # pick a semester
 uv run python examples/scrape_schedule.py --detail --json    # incl. detail pages (slow)
@@ -26,7 +26,7 @@ uv run python examples/scrape_schedule.py --detail --json    # incl. detail page
 Study results from `/hasil-studi`.
 
 ```bash
-uv run python examples/scrape_grades.py                      # IP/IPK + grade table
+uv run python examples/scrape_grades.py                      # IP/IPK + one line per course
 uv run python examples/scrape_grades.py --semester 20251
 uv run python examples/scrape_grades.py --json
 ```

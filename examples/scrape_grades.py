@@ -35,13 +35,11 @@ def main():
     elif not response.ok:
         print(f"Error {response.code}: {response.message}")
     else:
+        # plain prints of the fields documented in docs/guide/api-reference.md
         result = response.data
         print(f"IP: {result['ip']} | IPK: {result['ipk']}")
-        print("| Code | Course | Lecturer | Credits | Score | Letter |")
-        print("|---|---|---|---|---|---|")
         for c in result["courses"]:
-            lecturer = ", ".join(c["lecturers"])
-            print(f"| {c['code']} | {c['name']} | {lecturer} | {c['credits']} | {c['score']} | {c['letter']} |")
+            print(f"{c['no']} {c['code']} {c['name']} — {c['score']} ({c['letter']})")
     print(f"\nElapsed: {time.perf_counter() - start:.2f}s")
 
 

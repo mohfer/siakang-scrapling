@@ -174,6 +174,22 @@ class SiakangClient:
 
     # -- low level -----------------------------------------------------------
 
+    @staticmethod
+    def _resp_status(resp) -> int:
+        """HTTP status across scrapling and raw curl_cffi responses."""
+        return getattr(resp, "status", None) or resp.status_code
+
+    @staticmethod
+    def _resp_text(resp) -> str:
+        """Body text across scrapling and raw curl_cffi responses."""
+        body = getattr(resp, "body", None)
+        if isinstance(body, bytes):
+            return body.decode()
+        html_content = getattr(resp, "html_content", None)
+        if html_content is not None:
+            return html_content
+        return resp.text
+
     def _get_page(self, url: str, referer: str) -> str:
         if self._session is None:
             raise SiakangError("Client is not open — use 'with SiakangClient(...) as client:'")
@@ -213,12 +229,14 @@ class SiakangClient:
         return {m.start(): m.group(1)
                 for m in re.finditer(r'__lazyLoad\((?:&#039;|&quot;|[\x27\x22])([A-Za-z0-9+/=]+)(?:&#039;|&quot;|[\x27\x22])\)', raw)}
 
-    def _hydrate_lazy(self, url: str, segment: str, depth: int = 0) -> dict[str, str]:
+    def _hydrate_lazy(self, url: str, segment: str, depth: int = 0,
+                      session=None, token: str | None = None, owner: str | None = None) -> dict[str, str]:
         """Run __lazyLoad commits for every lazy component inside an html fragment.
 
         Each trigger belongs to the nearest preceding wire:snapshot element.
         Lazy renders may themselves contain further lazy children, so this
         recurses (bounded by depth). Returns {component name: concatenated html}.
+        owner: only hydrate markers whose owning component has this name.
         """
         rendered = {}
         if depth > 4 or not segment:
@@ -235,41 +253,42 @@ class SiakangClient:
                     owner_name, owner_sn = name, sn
                 else:
                     break
-            if not owner_sn:
+            if not owner_sn or (owner and owner_name != owner):
                 continue
             try:
                 child_html = self._wire_commit(
-                    url, owner_sn, calls=[{"method": "__lazyLoad", "params": [b64]}]
+                    url, owner_sn, calls=[{"method": "__lazyLoad", "params": [b64]}],
+                    session=session, token=token,
                 )
             except SiakangUpstreamError:
                 # one broken component must not sink the whole page
                 continue
             # the fresh render may contain another level of lazy components
             parts = [child_html]
-            parts.extend(self._hydrate_lazy(url, child_html, depth + 1).values())
+            parts.extend(self._hydrate_lazy(url, child_html, depth + 1, session=session, token=token).values())
             prev = rendered.get(owner_name)
             rendered[owner_name] = "\n".join([prev, *parts]) if prev else "\n".join(parts)
         return rendered
 
     def _wire_commit(self, url: str, snapshot: str, updates: dict | None = None,
-                     calls: list | None = None) -> str:
+                     calls: list | None = None, session=None, token: str | None = None) -> str:
         """Single-component livewire commit; returns the rendered html."""
         payload = {
-            "_token": getattr(self, "_csrf", ""),
+            "_token": token if token is not None else getattr(self, "_csrf", ""),
             "components": [{
                 "snapshot": snapshot,
                 "updates": updates or {},
                 "calls": calls or [],
             }],
         }
-        resp = self._session.post(
+        resp = (session or self._session).post(
             f"{BASE}/livewire/update",
             json=payload,
             headers={"referer": url, "X-CSRF-TOKEN": payload["_token"]},
         )
-        if resp.status != 200:
-            raise SiakangUpstreamError(f"livewire/update HTTP {resp.status}")
-        text = resp.body.decode() if isinstance(getattr(resp, "body", None), bytes) else str(resp.html_content)
+        if self._resp_status(resp) != 200:
+            raise SiakangUpstreamError(f"livewire/update HTTP {self._resp_status(resp)}")
+        text = self._resp_text(resp)
         return "\n".join(c["effects"].get("html", "") for c in json.loads(text)["components"])
 
     @staticmethod
@@ -299,12 +318,11 @@ class SiakangClient:
             json=payload,
             headers={"referer": url, "X-CSRF-TOKEN": payload["_token"]},
         )
-        if resp.status != 200:
-            raise SiakangUpstreamError(f"livewire/update HTTP {resp.status}")
-        text = resp.body.decode() if isinstance(getattr(resp, "body", None), bytes) else str(resp.html_content)
+        if self._resp_status(resp) != 200:
+            raise SiakangUpstreamError(f"livewire/update HTTP {self._resp_status(resp)}")
         return {
             json.loads(c["snapshot"])["memo"]["name"]: c["effects"].get("html", "")
-            for c in json.loads(text)["components"]
+            for c in json.loads(self._resp_text(resp))["components"]
         }
 
     # -- semesters -------------------------------------------------------------
@@ -565,23 +583,19 @@ class SiakangClient:
             csrf_m = re.search(r'data-csrf="([^"]+)"', r.text)
             if csrf_m:
                 csrf = csrf_m.group(1)
-                payload = {"_token": csrf, "components": [
-                    {"snapshot": sn, "updates": {}, "calls": []} for sn in self._wire_snapshots(r.text)
-                ]}
-                resp = sess.post(
-                    f"{BASE}/livewire/update",
-                    json=payload,
-                    headers={"referer": href, "X-CSRF-TOKEN": csrf},
-                )
-                # transient server errors happen; treat as cache miss instead of crashing
-                if resp.status == 200:
-                    for comp in resp.json().get("components", []):
-                        m = re.search(r"Kelas</h5>(.*?)<br>", comp["effects"].get("html", ""), re.S)
-                        if m:
-                            class_letter = " ".join(re.sub(r"<[^>]+>", " ", m.group(1)).split())
-                            break
-        except Exception:
-            pass  # leave class_letter empty; the cache simply stays a miss
+                try:
+                    # the header card (Kelas, ...) is a lazy component; it only
+                    # renders after its __lazyLoad commit — same as get_detail
+                    rendered = self._hydrate_lazy(
+                        href, r.text, session=sess, token=csrf,
+                        owner="pengajaran.detail-kuliah",
+                    )
+                    blob = "\n".join([r.text, *rendered.values()])
+                    m = re.search(r"Kelas</h5>(.*?)<br>", blob, re.S)
+                    if m:
+                        class_letter = " ".join(re.sub(r"<[^>]+>", " ", m.group(1)).split())
+                except Exception:
+                    pass  # leave class_letter empty; the cache simply stays a miss
         finally:
             sess.close()
         return key, class_letter

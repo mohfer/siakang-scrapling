@@ -38,6 +38,5 @@ into the same shapes.
 
 ## Running from another machine
 
-`examples/` scripts expect `.env` in the working directory and a writable temp
-path. The library itself has no filesystem dependencies unless you use
-`FileCache`.
+`examples/` scripts expect `.env` in the working directory. The library itself
+has no filesystem dependencies unless you use `FileCache`.

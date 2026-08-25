@@ -107,7 +107,7 @@ Ready-made tools in [`examples/`](examples/) read credentials from `.env`
 ```bash
 cp .env.example .env                                # fill in EMAIL / PASSWORD / SEMESTER
 
-uv run python examples/scrape_schedule.py           # schedule table (--json for full output)
+uv run python examples/scrape_schedule.py           # schedule, one line per course (--json for full output)
 uv run python examples/scrape_grades.py             # study results
 uv run python examples/scrape_semester.py           # semester list
 ```

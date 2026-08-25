@@ -46,4 +46,6 @@ library never runs JavaScript; instead it replays the HTTP calls Livewire makes:
 
 The parallel class only appears in the detail header. Since it belongs to the
 course offering (not the student), letters are cached by `schedule_id` and
-fetched for all courses in parallel threads with shared cookies.
+fetched for all courses in parallel threads with shared cookies. Each fetch
+opens the detail page and runs the header's `__lazyLoad` commit (same
+mechanism as [get_detail](#)) before reading the `Kelas` value.

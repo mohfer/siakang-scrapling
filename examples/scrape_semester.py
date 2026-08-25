@@ -26,10 +26,9 @@ def main():
     if not response.ok:
         print(f"Error {response.code}: {response.message}")
     else:
-        print("| Code | Semester | ID | Active |")
-        print("|---|---|---|---|")
+        # same loop as docs/guide/getting-started.md §4
         for s in response.data:
-            print(f"| {s['code']} | {s['name']} | {s['id']} | {'Yes' if s['active'] else ''} |")
+            print(s["code"], "→", s["name"], "(active)" if s["active"] else "")
     print(f"\nElapsed: {time.perf_counter() - start:.2f}s")
 
 
