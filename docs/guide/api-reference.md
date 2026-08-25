@@ -105,14 +105,14 @@ rows = client.get_schedule(semester="20252")      # specific semester
 
 ```python
 [{
-    "name": "Mata Kuliah Satu",   # course name
+    "name": "Mata Kuliah Satu",       # course name
     "code": "INF600001",              # course code (e.g. used as subject identifier)
     "schedule_code": "2600000001",    # schedule/offering code shown on the site
     "mode": "Offline",                # Offline / Online / Hybrid
     "credits": 2,                     # SKS
     "schedules": [                    # one entry per weekly session
-        {"day": "Senin", "time": "07:30 - 09:10",
-         "room": "Ruang Kuliah Contoh 101"},
+         {"day": "Senin", "time": "07:30 - 09:10",
+          "room": "Ruang Kuliah Contoh 101"},
     ],
     "lecturers": ["Dosen Contoh"],   # teaching team
     "class": "C24",                   # full class label; first letter is the parallel class

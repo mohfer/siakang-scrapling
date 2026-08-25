@@ -241,7 +241,7 @@ def grades_table_html(published=True):
         f"<td>{name} ({code}) {sks} SKS</td><td>1. {lect}</td>{nilai(score, letter)}</tr>"
         for i, (name, code, sks, lect, score, letter) in enumerate([
             ("Mata Kuliah Satu", "INF600001", 2, "1. Dosen Satu", "85.0", "B+"),
-            ("Mata Kuliah Dua", "INF600002", 3, "1. Dosen Contoh", "95", "A"),
+            ("Mata Kuliah Dua", "INF600002", 3, "1. Dosen Contoh", "90", "A"),
         ], start=1)
     )
     ip_html = "3.50" if published else ""
