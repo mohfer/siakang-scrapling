@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets
+.env
+
+# Local cache
+.siakang_class_cache.json
+
+# VitePress
+docs/node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+.pytest_cache/
+docs/0.0.0.0/
