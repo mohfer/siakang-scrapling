@@ -6,6 +6,7 @@ from siakang.client import (
     SiakangClient,
     _clean,
     _parse_tables,
+    _split_peserta_nim,
     _strip_tags,
     _to_float,
 )
@@ -114,3 +115,10 @@ class TestHelpers:
         tables = _parse_tables(html)
         assert len(tables) == 1
         assert tables[0]["rows"] == [["x"]]
+
+    def test_split_peserta_nim(self):
+        tables = [{"headers": ["No", "Nama"], "rows": [["1", "MAHASISWA CONTOH 3337000001"], ["2", "Budi"]]}]
+        out = _split_peserta_nim(tables)
+        assert out[0]["headers"] == ["No", "Nama", "NIM"]
+        assert out[0]["rows"][0] == ["1", "MAHASISWA CONTOH", "3337000001"]
+        assert out[0]["rows"][1] == ["2", "Budi", ""]

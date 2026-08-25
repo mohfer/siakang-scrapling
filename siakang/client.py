@@ -52,6 +52,26 @@ def _to_float(value: str) -> float | None:
         return None
 
 
+_NIM_RE = re.compile(r"^(.*\S)\s+(\d{8,})$")
+
+
+def _split_peserta_nim(tables: list[dict]) -> list[dict]:
+    """Split 'Nama 3337000001' cells into separate Nama / NIM columns."""
+    for t in tables:
+        if "Nama" not in t["headers"]:
+            continue
+        i = t["headers"].index("Nama")
+        if i + 1 >= len(t["headers"]) or t["headers"][i + 1] != "NIM":
+            t["headers"].insert(i + 1, "NIM")
+        for r in t["rows"]:
+            if i >= len(r):
+                continue
+            m = _NIM_RE.match(r[i])
+            name, nim = (m.group(1), m.group(2)) if m else (r[i], "")
+            r[i:i + 1] = [name, nim]
+    return tables
+
+
 def _parse_tables(html: str) -> list[dict]:
     """Extract every HTML table as a list of {headers, rows}."""
     tables = []
@@ -425,7 +445,7 @@ class SiakangClient:
                     children = self._hydrate_lazy(href, html)
                     content_html = "\n".join(children.values()) if children else html
                 content_html = re.sub(r"<script.*?</script>", "", content_html, flags=re.S)
-                entry["tables"] = _parse_tables(content_html)
+                entry["tables"] = _split_peserta_nim(_parse_tables(content_html))
                 entry["text"] = _strip_tags(content_html)
             except SiakangError as e:
                 entry["error"] = str(e)
