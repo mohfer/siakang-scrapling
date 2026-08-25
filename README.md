@@ -5,7 +5,6 @@
 *Fetch Siakang Untirta data over pure HTTP — schedules, grades and semesters*
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3c873a?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
-[![Tests](https://img.shields.io/badge/tests-58%20passed-3c873a?style=flat-square)](tests)
 [![Docs](https://img.shields.io/badge/docs-VitePress-5da9ff?style=flat-square)](https://docs-siakang-scrapling.mohfer.my.id)
 
 [Features](#features) • [Installation](#installation) • [Quickstart](#quickstart) • [API](#api-overview) • [CLI](#command-line)
