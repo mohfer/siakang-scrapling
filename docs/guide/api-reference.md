@@ -18,20 +18,17 @@ called on a client opened this way — otherwise you get the error
 ## Constructor Options
 
 ```python
-SiakangClient(email, password, cache=None, max_workers=4, session_file=None)
+SiakangClient(email, password, session_file=None)
 ```
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `cache` | object with `get(key)` / `set(key, value)` | `None` | Caches parallel-class lookups (`schedule_id` → class letter) across runs. Use [`FileCache`](#constructor-options) for development, Redis/DB-backed stores for production. |
-| `max_workers` | `int` | `4` | Parallel fetches when resolving class letters. |
 | `session_file` | `str \| Path \| bool \| None` | `None` | Persists login cookies so later runs skip the login round-trip. `True` uses a per-account file derived from the email hash (each account gets its own file); a path string uses that exact file. Expired sessions automatically fall back to a full login. |
 
 ```python
-from siakang import FileCache
+from siakang import SiakangClient
 
 client = SiakangClient(email, password,
-                       cache=FileCache(),       # reuse class-letter lookups
                        session_file=True)       # skip re-login between runs
 ```
 
@@ -115,8 +112,7 @@ rows = client.get_schedule(semester="20252")      # specific semester
           "room": "Ruang Kuliah Contoh 101"},
     ],
     "lecturers": ["Dosen Contoh"],   # teaching team
-    "class": "C24",                   # full class label; first letter is the parallel class
-    "schedule_id": "019bde9b-...",    # offering UUID — key for caches & get_detail
+    "schedule_id": "019bde9b-...",    # offering UUID — key for get_detail
 }]
 ```
 

@@ -7,12 +7,12 @@ import time
 
 from dotenv import load_dotenv
 
-from siakang import FileCache, SiakangClient, api_response
+from siakang import SiakangClient, api_response
 
 
 @api_response
 def fetch_schedule(email: str, password: str, semester: str | None, detail: bool):
-    with SiakangClient(email, password, cache=FileCache(), session_file=True) as client:
+    with SiakangClient(email, password, session_file=True) as client:
         return client.get_schedule(semester=semester, detail=detail)
 
 

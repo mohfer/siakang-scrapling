@@ -6,11 +6,9 @@ All Livewire interactions are performed directly against /livewire/update.
 import hashlib
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor
 from html import unescape
 from pathlib import Path
 
-from curl_cffi import requests as cffi_requests
 from scrapling.fetchers import FetcherSession
 from scrapling.parser import Selector
 
@@ -90,11 +88,9 @@ def _parse_tables(html: str) -> list[dict]:
 
 
 class SiakangClient:
-    def __init__(self, email: str, password: str, cache=None, max_workers: int = 4,
+    def __init__(self, email: str, password: str,
                  session_file: str | Path | bool | None = None):
         """
-        cache: object exposing get(key)/set(key, value); default None (no caching).
-               See siakang.cache.FileCache; swap in Redis/DB for production.
         session_file: persist login cookies so later runs skip the login round-trip.
                True  -> default path derived from the email hash, so each account
                         gets its own file and sessions never collide.
@@ -105,8 +101,6 @@ class SiakangClient:
         """
         self.email = email
         self.password = password
-        self.cache = cache
-        self.max_workers = max_workers
         self.session_file = session_file
         self._session = None
 
@@ -291,19 +285,6 @@ class SiakangClient:
         text = self._resp_text(resp)
         return "\n".join(c["effects"].get("html", "") for c in json.loads(text)["components"])
 
-    @staticmethod
-    def _lazy_load_calls(raw: str) -> dict[int, str]:
-        """Find Livewire lazy-load mount params per document position.
-
-        Lazy components carry their mount params as a base64-encoded
-        ``__mountParamsContainer`` snapshot inside ``$wire.__lazyLoad('...')``.
-        Returns {position in html: base64 params}.
-        """
-        out = {}
-        for m in re.finditer(r'__lazyLoad\(([\'"])([A-Za-z0-9+/=]+)\1\)', raw):
-            out[m.start()] = m.group(2)
-        return out
-
     def _wire_update(self, url: str, snapshots: list[str], updates_list: list[dict]) -> dict[str, str]:
         """POST /livewire/update. Returns {component name: rendered html}."""
         payload = {
@@ -460,8 +441,6 @@ class SiakangClient:
         if not courses:
             raise SiakangUpstreamError("No schedule cards found — list view switch failed?")
 
-        self._fill_class(courses)
-
         if detail:
             for c in courses:
                 c["detail"] = self.get_detail(c["schedule_id"])
@@ -569,56 +548,6 @@ class SiakangClient:
                 "credits": int(credits_text[0]) if credits_text and credits_text[0].isdigit() else None,
                 "schedules": schedules,
                 "lecturers": lecturers,
-                "class": "",
                 "schedule_id": links[0].attrib["href"].rsplit("/", 1)[-1] if links else "",
             })
         return courses
-
-    def _fetch_one_class(self, cookies: dict, href: str) -> tuple[str, str]:
-        key = href.rsplit("/", 1)[-1]
-        class_letter = ""
-        sess = cffi_requests.Session(impersonate="chrome", cookies=cookies)
-        try:
-            r = sess.get(href, headers={"referer": f"{BASE}/jadwal_perkuliahan"})
-            csrf_m = re.search(r'data-csrf="([^"]+)"', r.text)
-            if csrf_m:
-                csrf = csrf_m.group(1)
-                try:
-                    # the header card (Kelas, ...) is a lazy component; it only
-                    # renders after its __lazyLoad commit — same as get_detail
-                    rendered = self._hydrate_lazy(
-                        href, r.text, session=sess, token=csrf,
-                        owner="pengajaran.detail-kuliah",
-                    )
-                    blob = "\n".join([r.text, *rendered.values()])
-                    m = re.search(r"Kelas</h5>(.*?)<br>", blob, re.S)
-                    if m:
-                        class_letter = " ".join(re.sub(r"<[^>]+>", " ", m.group(1)).split())
-                except Exception:
-                    pass  # leave class_letter empty; the cache simply stays a miss
-        finally:
-            sess.close()
-        return key, class_letter
-
-    def _fill_class(self, courses: list[dict]):
-        todo, results = [], {}
-        if self.cache:
-            for c in courses:
-                val = self.cache.get(c["schedule_id"]) if c["schedule_id"] else None
-                if val is not None:
-                    c["class"] = val
-                elif c["schedule_id"]:
-                    todo.append(c)
-        else:
-            todo = [c for c in courses if c["schedule_id"]]
-
-        if todo:
-            cookies = self._session._curl_session.cookies.get_dict()
-            with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
-                urls = [f"{BASE}/jadwal_perkuliahan/detail/{c['schedule_id']}" for c in todo]
-                for key, class_letter in ex.map(lambda u: self._fetch_one_class(cookies, u), urls):
-                    results[key] = class_letter
-            for c in todo:
-                c["class"] = results.get(c["schedule_id"], "")
-                if self.cache and c["class"]:
-                    self.cache.set(c["schedule_id"], c["class"])

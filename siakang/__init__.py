@@ -1,6 +1,5 @@
 """siakang — library for scraping Siakang Untirta over pure HTTP."""
 
-from .cache import FileCache, NullCache
 from .client import (
     BASE,
     SiakangAuthError,
@@ -19,7 +18,5 @@ __all__ = [
     "SiakangUpstreamError",
     "ApiResponse",
     "api_response",
-    "FileCache",
-    "NullCache",
     "BASE",
 ]

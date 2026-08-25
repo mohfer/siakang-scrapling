@@ -43,7 +43,7 @@ with SiakangClient(email="xxx@student.untirta.ac.id", password="...") as client:
     # weekly class schedule for the active semester
     for course in client.get_schedule():
         session = course["schedules"][0]
-        print(f"{course['code']} {course['name']} ({course['class']}) "
+        print(f"{course['code']} {course['name']} "
               f"— {session['day']} {session['time']}")
 
     # study results for a specific semester
@@ -111,23 +111,7 @@ uv run python examples/scrape_grades.py             # study results
 uv run python examples/scrape_semester.py           # semester list
 ```
 
-## Caching & Multi-user Notes
-
-The parallel class only exists on each course's detail page. It belongs to the
-*course offering*, not the student, so its cache key (`schedule_id`) can safely be
-shared across users:
-
-```python
-from siakang import FileCache
-
-client = SiakangClient(email, password, cache=FileCache())   # dev default
-```
-
-For production apps backed by Redis or a database, pass any object exposing
-`get(key)` / `set(key, value)`. Each `SiakangClient` instance owns an isolated
-HTTP session — create one per logged-in user and never share it across threads.
-
-### Skip re-login between runs
+## Skip re-login between runs
 
 Pass `session_file=True` and login cookies are saved to a per-account file, so the
 next run restores the session instead of logging in again (expired sessions fall

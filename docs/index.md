@@ -22,5 +22,5 @@ features:
   - title: Consistent Responses
     details: Wrap any call with the api_response decorator to always receive a {code, message, data} envelope instead of exceptions.
   - title: Multi-User Friendly
-    details: One self-contained client per user session. Class-letter caches are keyed by course offering, so sharing them across users is safe.
+    details: One self-contained client per user session. Each client owns an isolated HTTP connection — create one per logged-in user.
 ---

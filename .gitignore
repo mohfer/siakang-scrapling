@@ -22,3 +22,8 @@ docs/.vitepress/cache/
 docs/.vitepress/dist/
 .pytest_cache/
 docs/0.0.0.0/
+docs/--host/
+
+# pnpm build artifacts (project uses npm)
+docs/pnpm-lock.yaml
+docs/pnpm-workspace.yaml

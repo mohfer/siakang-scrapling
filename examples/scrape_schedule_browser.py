@@ -49,7 +49,6 @@ def _parse_card(card) -> dict:
         "lecturers": lecturer,
         "day": day,
         "time": time_,
-        "class": "",
         "href": link.get_attribute("href") if link else "",
     }
 
@@ -98,20 +97,6 @@ def fetch_schedule(email: str, password: str, semester: str | None):
         courses.extend(_parse_card(card) for card in page.query_selector_all("div.card")
                        if card.query_selector("h5") and card.query_selector('a[href*="/detail/"]'))
 
-        # fetch the class letter from each detail page
-        for c in courses:
-            page.goto(c.pop("href"), wait_until="domcontentloaded")
-            page.wait_for_function(
-                "[...document.querySelectorAll('h5')].some(h => h.textContent.trim() === 'Kelas')",
-                timeout=30000,
-            )
-            c["class"] = page.evaluate("""() => {
-                const h = [...document.querySelectorAll('h5')].find(h => h.textContent.trim() === 'Kelas');
-                let n = h.nextSibling;
-                while (n && !n.textContent.trim()) n = n.nextSibling;
-                return n ? n.textContent.trim() : '';
-            }""")
-
     StealthyFetcher.fetch(
         f"{BASE}/auth/login",
         headless=True,
@@ -141,7 +126,7 @@ def main():
     else:
         # same print style as docs/guide/getting-started.md §3
         for r in response.data:
-            print(f"{r['code']} {r['name']} ({r['class']}) — {r['day']} {r['time']}")
+            print(f"{r['code']} {r['name']} — {r['day']} {r['time']}")
     print(f"\nElapsed: {time.perf_counter() - start:.2f}s")
 
 

@@ -175,11 +175,6 @@ class TestScheduleWithDetail:
         monkeypatch.setattr("siakang.client.FetcherSession",
                             lambda: FakeFetcherSession(inner))
 
-        def fake_fetch_one_class(self, cookies, href):
-            key = href.rsplit("/", 1)[-1]
-            return key, kelas_by_id.get(key, "")
-        monkeypatch.setattr(SiakangClient, "_fetch_one_class", fake_fetch_one_class)
-
         load_dotenv(".env")
         client = SiakangClient(email=os.getenv("EMAIL"),
                                password=os.getenv("PASSWORD")).__enter__()
@@ -187,9 +182,7 @@ class TestScheduleWithDetail:
 
         assert len(rows) == 2
         for r in rows:
-            expected = kelas_by_id[r["schedule_id"]]
-            assert r["class"] == expected
-            assert r["detail"]["header"]["Kelas"] == expected
+            assert r["detail"]["header"]["Kelas"] == kelas_by_id[r["schedule_id"]]
             peserta_rows = sum(len(t["rows"])
                                for t in r["detail"]["tabs"]["peserta"]["tables"])
             assert peserta_rows >= 1

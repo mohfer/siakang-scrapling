@@ -42,10 +42,5 @@ library never runs JavaScript; instead it replays the HTTP calls Livewire makes:
 | Participants tab | `__lazyLoad` on `jadwal.peserta` |
 | RPS / Journal / Recap tabs | set `active_menu`, then hydrate the child that appears (recursively) |
 
-## Class Letters
-
-The parallel class only appears in the detail header. Since it belongs to the
-course offering (not the student), letters are cached by `schedule_id` and
-fetched for all courses in parallel threads with shared cookies. Each fetch
-opens the detail page and runs the header's `__lazyLoad` commit (same
-mechanism as [get_detail](#)) before reading the `Kelas` value.
+The parallel class (`Kelas`) only appears on the detail page — the schedule
+list itself does not show it, which is why `get_schedule()` omits it.

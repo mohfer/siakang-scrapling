@@ -7,7 +7,6 @@ import pytest
 
 from siakang import SiakangClient, SiakangError
 from siakang.client import BASE, SiakangAuthError, SiakangNotFoundError, SiakangUpstreamError
-from siakang.cache import FileCache
 
 from conftest import (
     CSRF,
@@ -109,17 +108,10 @@ def make_handlers(*, login_ok=True, pages=None, livewire=None):
     return handlers
 
 
-def open_client(monkeypatch, handlers, class_letters=None):
+def open_client(monkeypatch, handlers):
     inner = FakeSession(handlers)
     fetcher = FakeFetcherSession(inner)
     monkeypatch.setattr("siakang.client.FetcherSession", lambda: fetcher)
-
-    letters = dict(class_letters or {})
-    if class_letters is not None:
-        def fake_fetch(self, cookies, href):
-            key = href.rsplit("/", 1)[-1]
-            return key, letters.get(key, "")
-        monkeypatch.setattr(SiakangClient, "_fetch_one_class", fake_fetch)
 
     client = SiakangClient(email="a@b.c", password="pw").__enter__()
     return client, inner
@@ -263,13 +255,11 @@ class TestGetSchedule:
 
         return make_handlers(pages=pages, livewire=livewire_override or livewire)
 
-    def test_happy_path_parses_cards_and_classes(self, monkeypatch):
-        letters = {SCHEDULE_ID: "A24", "id-cloud": "B24"}
-        client, _ = open_client(monkeypatch, self._handlers(), class_letters=letters)
+    def test_happy_path_parses_cards(self, monkeypatch):
+        client, _ = open_client(monkeypatch, self._handlers())
         rows = client.get_schedule(semester="20261")
 
         assert [r["name"] for r in rows] == ["Mata Kuliah Satu", "Mata Kuliah Dua"]
-        assert rows[0]["class"] == "A24"
         assert rows[1]["credits"] == 3
         assert rows[0]["lecturers"] == ["Dosen Dummy"]
 
@@ -389,57 +379,3 @@ class TestGetDetail:
         assert all("error" in entry for entry in d["tabs"].values())
 
 
-class TestFetchOneClass:
-    def test_real_fetch_hydrates_lazy_header(self, monkeypatch):
-        """_fetch_one_class must run the __lazyLoad commit: on the real site
-        the Kelas header only renders after it (regression: class was '')."""
-        detail_url = f"{BASE}/jadwal_perkuliahan/detail/{SCHEDULE_ID}"
-        posts = []
-
-        def livewire(u, k):
-            comp = k["json"]["components"][0]
-            name = json.loads(comp["snapshot"])["memo"]["name"]
-            posts.append(name)
-            if comp.get("calls") and comp["calls"][0]["method"] == "__lazyLoad":
-                return FakeResponse(lw_response({name: HEADER_HTML}), content_type="json")
-            return FakeResponse(lw_response({name: ""}), content_type="json")
-
-        handlers = [
-            ("GET", lambda u: u == detail_url,
-             lambda u, k: FakeResponse(detail_page_html(), url=u)),
-            ("POST", lambda u: u.endswith("/livewire/update"), livewire),
-        ]
-        fake_sess = FakeSession(handlers)
-        monkeypatch.setattr("siakang.client.cffi_requests.Session",
-                            lambda **kw: fake_sess)
-        client, _ = open_client(monkeypatch, make_handlers())
-
-        key, letter = client._fetch_one_class({"siakang_session": "x"}, detail_url)
-
-        assert key == SCHEDULE_ID
-        assert letter == "A24"
-        # owner filter: only the header component is hydrated, nothing else
-        assert posts == ["pengajaran.detail-kuliah"]
-
-    def test_missing_kelas_stays_empty(self, monkeypatch):
-        detail_url = f"{BASE}/jadwal_perkuliahan/detail/other-id"
-        page = detail_page_html().replace("pengajaran.detail-kuliah", "pengajaran.lain")
-
-        def livewire(u, k):
-            comp = k["json"]["components"][0]
-            name = json.loads(comp["snapshot"])["memo"]["name"]
-            return FakeResponse(lw_response({name: "<div>no kelas</div>"}),
-                                content_type="json")
-
-        handlers = [
-            ("GET", lambda u: u == detail_url,
-             lambda u, k: FakeResponse(page, url=u)),
-            ("POST", lambda u: u.endswith("/livewire/update"), livewire),
-        ]
-        fake_sess = FakeSession(handlers)
-        monkeypatch.setattr("siakang.client.cffi_requests.Session",
-                            lambda **kw: fake_sess)
-        client, _ = open_client(monkeypatch, make_handlers())
-
-        key, letter = client._fetch_one_class({"siakang_session": "x"}, detail_url)
-        assert key == "other-id" and letter == ""
