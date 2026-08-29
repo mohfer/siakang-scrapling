@@ -75,6 +75,24 @@ PESERTA_HTML = ("<table><thead><tr><th>No</th><th>Nama</th><th>Wali Setuju</th>"
                 "<tbody><tr><td>1</td><td>STUDENT ONE</td><td>Ya</td><td>0</td>"
                 "<td>0</td><td>0</td></tr></tbody></table>")
 
+RPS_SECTIONS_HTML = (
+    '<h4 class="header-title">Bahan Ajar</h4>'
+    '<div><a href="" class="text-muted fw-bold">Konsep Resiko</a>'
+    '<a href=""><i class="dripicons-download"></i></a></div>'
+    '<h4 class="header-title">RPS Materi</h4>'
+    '<table><thead><tr><th>No</th><th>CPMK</th><th>Materi</th>'
+    '<th>Metode Penyampaian</th><th>Alokasi Waktu</th></tr></thead><tbody></tbody></table>'
+    '<h4 class="header-title">Evaluasi Aspek</h4>'
+    '<table><thead><tr><th>No</th><th>Aspek Evaluasi</th><th>Rencana Evaluasi</th>'
+    '<th>Bobot</th></tr></thead><tbody>'
+    '<tr><td>1</td><td>Ujian Akhir Semester</td><td>Pengukuran kompetensi.</td><td>25</td></tr>'
+    '</tbody></table>'
+    '<h4 class="header-title">RPS Referensi</h4>'
+    '<table><thead><tr><th>No</th><th>Referensi</th></tr></thead><tbody>'
+    '<tr><td>1</td><td>G. Stoneburner. Risk Management Guide.</td></tr>'
+    '</tbody></table>'
+)
+
 CHALLENGE_HTML = '<html><body><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script></body></html>'
 
 
@@ -339,6 +357,8 @@ class TestGetDetail:
                     return FakeResponse(lw_response({name: PESERTA_HTML}), content_type="json")
                 if name == "pengajaran.detail-kuliah":
                     return FakeResponse(lw_response({name: HEADER_HTML}), content_type="json")
+                if name == "pengajaran.rps-bahan-ajar-extra":
+                    return FakeResponse(lw_response({name: RPS_SECTIONS_HTML}), content_type="json")
                 return FakeResponse("err", status=500, content_type="json")
             updates = comp.get("updates", {})
             tab = updates.get("active_menu")
@@ -355,7 +375,7 @@ class TestGetDetail:
                         f'<span x-intersect="$wire.__lazyLoad(&#039;{b64}&#039;)"></span></div>')
                 return FakeResponse(lw_response({"pengajaran.manajemen-kuliah": menu}),
                                     content_type="json")
-            return FakeResponse(lw_response({"pengajaran.manajemen-kuliah": f"<div>{tab}</div>"}),
+            return FakeResponse(lw_response({"pengajaran.manajemen-kuliah": RPS_SECTIONS_HTML}),
                                 content_type="json")
 
         pages = {f"{BASE}/jadwal_perkuliahan/detail/{SCHEDULE_ID}": FakeResponse(detail_page_html())}
@@ -365,12 +385,26 @@ class TestGetDetail:
         client, _ = open_client(monkeypatch, self._handlers())
         d = client.get_detail(SCHEDULE_ID)
 
-        assert d["header"]["Kelas"] == "A24"
-        assert d["header"]["Dosen"] == "Dosen Dummy, S.T., M.T.I"
+        assert d["header"]["kelas"] == "A24"
+        assert d["header"]["dosen"] == "Dosen Dummy, S.T., M.T.I"
         assert set(d["tabs"]) == {"rps_bahan_ajar", "peserta",
                                   "jurnal_perkuliahan", "rekap_jurnal_perkuliahan"}
-        rows = d["tabs"]["peserta"]["tables"][0]["rows"]
-        assert rows[0][1] == "STUDENT ONE"
+        records = d["tabs"]["peserta"]["rows"]
+        assert records[0]["nama"] == "STUDENT ONE"
+
+        rps = d["tabs"]["rps_bahan_ajar"]
+        assert set(rps["sections"]) == {"bahan_ajar", "rps_materi", "evaluasi_aspek", "rps_referensi"}
+        assert rps["sections"]["bahan_ajar"] == [{"judul": "Konsep Resiko", "url": ""}]
+        assert rps["sections"]["rps_materi"] == []
+        assert rps["sections"]["evaluasi_aspek"][0]["aspek_evaluasi"] == "Ujian Akhir Semester"
+
+    def test_tabs_arg_fetches_only_requested_tabs(self, monkeypatch):
+        client, _ = open_client(monkeypatch, self._handlers())
+        d = client.get_detail(SCHEDULE_ID, tab_keys=["peserta"])
+
+        assert set(d["tabs"]) == {"peserta"}
+        assert d["header"]["kelas"] == "A24"
+        assert d["tabs"]["peserta"]["rows"][0]["nama"] == "STUDENT ONE"
 
     def test_tab_error_is_reported_not_raised(self, monkeypatch):
         client, _ = open_client(monkeypatch, self._handlers())

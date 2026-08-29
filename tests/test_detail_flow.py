@@ -182,9 +182,8 @@ class TestScheduleWithDetail:
 
         assert len(rows) == 2
         for r in rows:
-            assert r["detail"]["header"]["Kelas"] == kelas_by_id[r["schedule_id"]]
-            peserta_rows = sum(len(t["rows"])
-                               for t in r["detail"]["tabs"]["peserta"]["tables"])
+            assert r["detail"]["header"]["kelas"] == kelas_by_id[r["schedule_id"]]
+            peserta_rows = len(r["detail"]["tabs"]["peserta"]["rows"])
             assert peserta_rows >= 1
 
     def test_lazy_component_failure_does_not_crash(self, monkeypatch):

@@ -41,6 +41,24 @@ Semester list from `/dashboard/list-semester`.
 uv run python examples/scrape_semester.py
 ```
 
+## scrape_detail.py
+
+Detail page for one course offering from `/jadwal_perkuliahan/detail/<id>`.
+
+```bash
+uv run python examples/scrape_detail.py                                     # peserta tab only (default)
+uv run python examples/scrape_detail.py --schedule-id <uuid>                # a specific offering
+uv run python examples/scrape_detail.py --tabs rps_bahan_ajar jurnal_perkuliahan
+uv run python examples/scrape_detail.py --tabs jurnal_perkuliahan --kuliah-id <meeting-uuid>
+uv run python examples/scrape_detail.py --json                              # full JSON envelope
+```
+
+`--tabs` defaults to `peserta`; pass the others (`rps_bahan_ajar`,
+`jurnal_perkuliahan`, `rekap_jurnal_perkuliahan`) explicitly, or `--tabs
+rps_bahan_ajar peserta jurnal_perkuliahan rekap_jurnal_perkuliahan` for
+everything. `--kuliah-id` selects a specific meeting on the Jurnal tab (id from
+that tab's `pertemuan` list).
+
 ## scrape_schedule_browser.py
 
 Fallback that drives a real Camoufox browser. Only useful if the plain-HTTP path

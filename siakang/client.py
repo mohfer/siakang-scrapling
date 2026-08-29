@@ -52,28 +52,41 @@ def _to_float(value: str) -> float | None:
         return None
 
 
+def _to_snake(key: str) -> str:
+    """snake_case a human heading: 'Wali Setuju' -> 'wali_setuju',
+    'RPS Referensi' -> 'rps_referensi', 'Ruang dan Waktu' -> 'ruang_dan_waktu'."""
+    words = re.findall(r"[A-Za-z0-9]+", key)
+    return "_".join(words).lower()
+
+
 _NIM_RE = re.compile(r"^(.*\S)\s+(\d{8,})$")
 
 
-def _split_peserta_nim(tables: list[dict]) -> list[dict]:
-    """Split 'Nama 3337000001' cells into separate Nama / NIM columns."""
-    for t in tables:
-        if "Nama" not in t["headers"]:
-            continue
-        i = t["headers"].index("Nama")
-        if i + 1 >= len(t["headers"]) or t["headers"][i + 1] != "NIM":
-            t["headers"].insert(i + 1, "NIM")
-        for r in t["rows"]:
-            if i >= len(r):
-                continue
-            m = _NIM_RE.match(r[i])
-            name, nim = (m.group(1), m.group(2)) if m else (r[i], "")
-            r[i:i + 1] = [name, nim]
+def _split_peserta_nim(tables: list[list[dict]]) -> list[list[dict]]:
+    """Split 'Nama 3337000001' cells into nama / nim keys and keep nim
+    directly after nama in every table that has both."""
+    for table in tables:
+        if not any("nim" in row for row in table):
+            split = False
+            for row in table:
+                m = _NIM_RE.match(row.get("nama", ""))
+                if m and m.group(2):
+                    row["nama"] = m.group(1)
+                    row["nim"] = m.group(2)
+                    split = True
+            if split and any("nama" in row for row in table):
+                for row in table:
+                    row.setdefault("nim", "")
+        for i, row in enumerate(table):
+            if "nama" in row and "nim" in row:
+                keys = [k for k in row if k != "nim"]
+                keys.insert(keys.index("nama") + 1, "nim")
+                table[i] = {k: row[k] for k in keys}
     return tables
 
 
-def _parse_tables(html: str) -> list[dict]:
-    """Extract every HTML table as a list of {headers, rows}."""
+def _parse_tables(html: str) -> list[list[dict]]:
+    """Extract every HTML table as a list of records (list of row dicts)."""
     tables = []
     for t in Selector(html).css("table"):
         headers = [_clean(th) for th in t.css("th")]
@@ -82,9 +95,101 @@ def _parse_tables(html: str) -> list[dict]:
             for tr in t.css("tbody tr")
         ]
         rows = [r for r in rows if any(r)]
-        if headers or rows:
-            tables.append({"headers": headers, "rows": rows})
+        records = [dict(zip([_to_snake(h) for h in headers], row)) for row in rows] if headers else [
+            {"value": r[0]} for r in rows]
+        if records:
+            tables.append(records)
     return tables
+
+
+def _parse_jurnal(html: str) -> list[dict]:
+    """Parse the Jurnal Perkuliahan table, where attendance is a radio group.
+
+    Status Kehadiran is a row of four radios (Hadir/Izin/Sakit/Tanpa Alasan);
+    the selected one is the ``checked`` radio. Keterangan is a free-text cell
+    that shows ``-`` by default. Other columns keep their visible text.
+    """
+    rows = []
+    for tr in Selector(html).css("tbody tr"):
+        tds = tr.css("td")
+        if len(tds) < 5:
+            continue
+        checked = tr.css('input[type="radio"]:checked')
+        status = ""
+        if checked:
+            radio_id = checked[0].attrib.get("id", "")
+            for lbl in tr.css("label"):
+                if lbl.attrib.get("for") == radio_id:
+                    status = _clean(lbl)
+                    break
+        keterangan = _clean(tds[-1])
+        rows.append({
+            "no": _clean(tds[0]),
+            "nama": _clean(tds[1].css("h5")[0]) if tds[1].css("h5") else _clean(tds[1]),
+            "nim": _clean(tds[1].css(".badge")[0]) if tds[1].css(".badge") else "",
+            "status_registrasi": _clean(tds[2].css(".badge")[0]) if tds[2].css(".badge") else _clean(tds[2]),
+            "status_kehadiran": status or "-",
+            "keterangan": keterangan or "-",
+        })
+    return rows
+
+
+def _parse_jurnal_meta(html: str) -> dict:
+    """Extract the dropdowns/textarea at the top of the Jurnal tab.
+
+    ``pertemuan`` lists every meeting option {id, label}; ``kuliah_id`` is the
+    selected one ('' = "Pilih Pertemuan"). ``topik`` is the lecture topic text
+    and ``rps_materi`` the selected RPS Materi label — both are set by the
+    lecturer, so they may be empty.
+    """
+    sel = Selector(html)
+    meta: dict = {"pertemuan": [], "kuliah_id": "", "topik": "", "rps_materi": ""}
+
+    p_sel = sel.css('select[wire\\:model\\.live="kuliah_id"]')
+    if p_sel:
+        meta["pertemuan"] = [{"id": o.attrib.get("value", ""), "label": _clean(o)}
+                             for o in p_sel[0].css("option")]
+        meta["kuliah_id"] = p_sel[0].css('option[selected]')[0].attrib.get("value", "") \
+            if p_sel[0].css('option[selected]') else ""
+
+    topik = sel.css('textarea[wire\\:model="topik"]')
+    if topik:
+        meta["topik"] = _clean(topik[0])
+
+    rps = sel.css('select[wire\\:model="rps_materi_id"] option[selected]')
+    if rps:
+        meta["rps_materi"] = _clean(rps[0])
+    return meta
+
+
+def _parse_rps_sections(html: str) -> dict[str, list[dict]]:
+    """Split the RPS & Bahan Ajar tab into its named sections (h4 headings).
+
+    Every ``<h4 class="header-title">`` heading opens a section. Tables inside
+    become records; non-table content (Bahan Ajar link cards) becomes records
+    too. Sections stay present even when empty (empty list).
+    """
+    sections: dict[str, list[dict]] = {}
+    parts = re.split(r'<h4[^>]*class="header-title"[^>]*>(.*?)</h4>', html, flags=re.S)
+    for i in range(1, len(parts), 2):
+        name = _to_snake(_strip_tags(parts[i]))
+        body = parts[i + 1]
+        if not name or name in sections:
+            continue
+        tables = _parse_tables(body)
+        if Selector(body).css("table"):
+            sections[name] = [row for t in tables for row in t]
+            continue
+        records = [{"judul": _clean(a), "url": a.attrib.get("href", "")}
+                   for a in Selector(body).css("a")]
+        # each card carries a title link plus an icon-only download link; drop the empties
+        records = [r for r in records if r["judul"]]
+        if not records:
+            text = _strip_tags(body)
+            if text:
+                records = [{"value": text}]
+        sections[name] = records
+    return sections
 
 
 class SiakangClient:
@@ -265,8 +370,13 @@ class SiakangClient:
         return rendered
 
     def _wire_commit(self, url: str, snapshot: str, updates: dict | None = None,
-                     calls: list | None = None, session=None, token: str | None = None) -> str:
-        """Single-component livewire commit; returns the rendered html."""
+                     calls: list | None = None, session=None, token: str | None = None,
+                     return_snapshots: bool = False) -> str | tuple[str, dict[str, str]]:
+        """Single-component livewire commit; returns the rendered html.
+
+        return_snapshots: also return {component name: fresh snapshot string}
+        for every component in the response (usable for follow-up commits).
+        """
         payload = {
             "_token": token if token is not None else getattr(self, "_csrf", ""),
             "components": [{
@@ -282,8 +392,12 @@ class SiakangClient:
         )
         if self._resp_status(resp) != 200:
             raise SiakangUpstreamError(f"livewire/update HTTP {self._resp_status(resp)}")
-        text = self._resp_text(resp)
-        return "\n".join(c["effects"].get("html", "") for c in json.loads(text)["components"])
+        comps = json.loads(self._resp_text(resp))["components"]
+        html = "\n".join(c["effects"].get("html", "") for c in comps)
+        if return_snapshots:
+            snaps = {json.loads(c["snapshot"])["memo"]["name"]: c["snapshot"] for c in comps}
+            return html, snaps
+        return html
 
     def _wire_update(self, url: str, snapshots: list[str], updates_list: list[dict]) -> dict[str, str]:
         """POST /livewire/update. Returns {component name: rendered html}."""
@@ -447,8 +561,17 @@ class SiakangClient:
 
         return courses
 
-    def get_detail(self, schedule_id: str) -> dict:
-        """Full detail page for one course offering: header + every tab."""
+    def get_detail(self, schedule_id: str, tab_keys: list[str] | None = None,
+                   kuliah_id: str | None = None) -> dict:
+        """Full detail page for one course offering: header + selected tabs.
+
+        tab_keys: tab keys to fetch; None = all tabs (see TABS). The header
+                  card is always fetched. Fetched tabs still appear under
+                  their key.
+        kuliah_id: Jurnal tab meeting id (from the tab's ``pertemuan`` list).
+                  None = the default "Pilih Pertemuan" state. Setting it
+                  re-renders that meeting's attendance table.
+        """
         href = f"{BASE}/jadwal_perkuliahan/detail/{schedule_id}"
         raw = self._get_page(href, f"{BASE}/jadwal_perkuliahan")
 
@@ -469,32 +592,68 @@ class SiakangClient:
             m = re.match(r"(.*?)</h5>(.*)", part, re.S)
             if not m:
                 continue
-            key = _strip_tags(m.group(1))
+            key = _to_snake(_strip_tags(m.group(1)))
             value = _strip_tags(re.split(r"<h5|</div>", m.group(2))[0])
             if key:
                 header[key] = value
 
         tabs = {}
-        for tab in TABS:
-            entry = {"tables": [], "text": "", "error": None}
+        for tab in (TABS if tab_keys is None else tab_keys):
+            entry = {"error": None}
             try:
                 resp = self._wire_update(href, [snaps["pengajaran.manajemen-kuliah"]], [{"active_menu": tab}])
                 html = resp.get("pengajaran.manajemen-kuliah", "")
 
                 if tab == "peserta":
                     content_html = peserta_html
+                elif tab == "jurnal_perkuliahan" and kuliah_id:
+                    content_html = self._render_jurnal_meeting(href, html, kuliah_id)
                 else:
                     # tab content is a lazy child component: run its __lazyLoad commit
                     children = self._hydrate_lazy(href, html)
                     content_html = "\n".join(children.values()) if children else html
                 content_html = re.sub(r"<script.*?</script>", "", content_html, flags=re.S)
-                entry["tables"] = _split_peserta_nim(_parse_tables(content_html))
-                entry["text"] = _strip_tags(content_html)
+                if tab == "rps_bahan_ajar":
+                    entry["sections"] = _parse_rps_sections(content_html)
+                elif tab == "jurnal_perkuliahan":
+                    entry.update(_parse_jurnal_meta(content_html))
+                    if kuliah_id:
+                        entry["kuliah_id"] = kuliah_id
+                    entry["rows"] = _parse_jurnal(content_html)
+                else:
+                    tables = _split_peserta_nim(_parse_tables(content_html))
+                    entry["rows"] = [row for t in tables for row in t]
             except SiakangError as e:
                 entry["error"] = str(e)
             tabs[tab] = entry
         return {"url": href, "header": header, "tabs": tabs}
 
+    def _render_jurnal_meeting(self, href: str, jurnal_html: str, kuliah_id: str) -> str:
+        """Select a Jurnal Perkuliahan meeting: mount the lazy journal component
+        then update its ``kuliah_id`` property. Returns the re-rendered html."""
+        comps = [
+            (m.start(), unescape(m.group(2)))
+            for m in re.finditer(r'wire:snapshot=(["\'])(.*?)\1', jurnal_html, re.S)
+        ]
+        markers = list(self._lazy_load_markers(jurnal_html).items())
+        for lpos, b64 in markers:
+            owner_sn = None
+            for pos, sn in comps:
+                if pos < lpos:
+                    owner_sn = sn
+                else:
+                    break
+            if not owner_sn:
+                continue
+            _, snaps = self._wire_commit(href, owner_sn,
+                                         calls=[{"method": "__lazyLoad", "params": [b64]}],
+                                         return_snapshots=True)
+            if "pengajaran.jurnal-perkuliahan" in snaps:
+                html, _ = self._wire_commit(href, snaps["pengajaran.jurnal-perkuliahan"],
+                                            updates={"kuliah_id": kuliah_id},
+                                            return_snapshots=True)
+                return html
+        return jurnal_html
     # -- parsing ---------------------------------------------------------------
 
     @staticmethod

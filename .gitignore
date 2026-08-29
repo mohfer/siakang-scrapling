@@ -27,3 +27,6 @@ docs/--host/
 # pnpm build artifacts (project uses npm)
 docs/pnpm-lock.yaml
 docs/pnpm-workspace.yaml
+
+# Local editor/tooling config
+.commandcode/

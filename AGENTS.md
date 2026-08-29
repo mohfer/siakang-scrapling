@@ -18,6 +18,11 @@ No lint/typecheck config exists — pytest is the only gate.
 - All tests are **fully offline**: `tests/conftest.py` provides `FakeResponse`/fake session handlers keyed on `(method, url-predicate)` routes. Never make real network calls in tests; extend the handler lists instead.
 - To test a new client code path, add a matching route tuple (`("GET"/"POST", url_predicate, responder_fn)`) in the test's handler list — see `standard_login_handlers` in conftest for the happy-path login flow.
 
+## Dummy data only
+
+- Never use real student/personal data (real NIMs, names, IPKs, schedules, etc.) in source, tests, fixtures, docs, or examples. When copying an output shape, replace all values with clearly-fake placeholders (e.g. Nama `MAHASISWA CONTOH`, NIM `3337000001`, course `Mata Kuliah Satu`, student `STUDENT ONE`).
+- This is the project's own practice and the documented convention; keep it whenever editing response shapes, docs, or fixtures.
+
 ## Gotchas
 
 - `.env` at repo root holds real credentials (EMAIL/PASSWORD/SEMESTER). Never commit, print, or echo it.

@@ -52,7 +52,7 @@ with SiakangClient(email="xxx@student.untirta.ac.id", password="...") as client:
 
     # everything about one course offering
     detail = client.get_detail(course["schedule_id"])
-    print(detail["header"]["Dosen"])
+    print(detail["header"]["dosen"])
 ```
 
 > [!TIP]
@@ -93,7 +93,7 @@ print(response.to_dict())   # {"code": 200, "message": "Success", "data": [...]}
 | `list_semesters()` | All semesters with codes, names, UUIDs and the active flag |
 | `get_schedule(semester?, detail?)` | Weekly class schedule; one row per course |
 | `get_grades(semester?)` | Study results with scores, letters, IP and IPK |
-| `get_detail(schedule_id)` | Header card + RPS, participants, journals and recap tabs |
+| `get_detail(schedule_id, tab_keys?)` | Header card + selected tabs (default all) |
 
 Full parameter tables and output shapes:
 the [API Reference](https://docs-siakang-scrapling.mohfer.my.id/guide/api-reference).

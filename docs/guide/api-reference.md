@@ -163,10 +163,21 @@ Jurnal Perkuliahan and Rekap Jurnal Perkuliahan.
 
 ```python
 detail = client.get_detail("019bde9b-a01f-...")       # a schedule_id
+detail = client.get_detail(sid, tab_keys=["peserta"]) # header + peserta only
+detail = client.get_detail(sid, tab_keys=["jurnal_perkuliahan"],
+                           kuliah_id="019bde9b-...")   # a specific meeting
 ```
 
 Where do I get a `schedule_id`? From any row of
 [`get_schedule()`](#get-schedule) — it's the `"schedule_id"` field.
+
+`tab_keys` picks which tabs to fetch (default `None` = all). The header card is
+always fetched. Valid keys: `rps_bahan_ajar`, `peserta`,
+`jurnal_perkuliahan`, `rekap_jurnal_perkuliahan` (also exported as
+`siakang.TABS`).
+
+`kuliah_id` re-selects the meeting on the Jurnal tab. Get ids from the tab's
+own `pertemuan` list (first fetch without `kuliah_id`, then pick an id).
 
 **Returns:**
 
@@ -174,29 +185,76 @@ Where do I get a `schedule_id`? From any row of
 {
     "url": "https://siakang.untirta.ac.id/jadwal_perkuliahan/detail/<id>",
     "header": {
-        "Kode Jadwal": "2600000001",
-        "Mata Kuliah": "Mata Kuliah Satu",
-        "Kelas": "A24",
-        "Dosen": "Dosen Dummy, S.T., M.T.I",
-        "Ruang dan Waktu": "Ruang Kuliah Contoh 101, Senin 09:10 - 10:50",
-        "Pertemuan Terlaksana": "0 Kali",
+        "kode_jadwal": "2600000001",
+        "mata_kuliah": "Mata Kuliah Satu",
+        "kelas": "A24",
+        "dosen": "Dosen Dummy, S.T., M.T.I",
+        "ruang_dan_waktu": "Ruang Kuliah Contoh 101, Senin 09:10 - 10:50",
+        "pertemuan_terlaksana": "0 Kali",
     },
     "tabs": {
-        "rps_bahan_ajar":            { "tables": [...], "text": "...", "error": None },
-        "peserta":                   { "tables": [...], "text": "...", "error": None },
-        "jurnal_perkuliahan":        { "tables": [...], "text": "...", "error": None },
-        "rekap_jurnal_perkuliahan":  { "tables": [...], "text": "...", "error": None },
+        "rps_bahan_ajar":            { "sections": {...}, "error": None },
+        "peserta":                   { "rows": [...], "error": None },
+        "jurnal_perkuliahan":        { "rows": [...], "pertemuan": [...], "topik": "...", "rps_materi": "...", "error": None },
+        "rekap_jurnal_perkuliahan":  { "rows": [...], "error": None },
     }
 }
 ```
 
 Each tab contains:
 
-- `tables` — list of `{headers: [...], rows: [[cell, ...], ...]}`, extracted
-  from every HTML table found in that tab.
-- `text` — plain-text version of the whole tab (handy for search/preview).
+- `rows` — flat list of record dicts; every HTML table in the tab is merged
+  into one list, each dict mapping snake_cased header → cell value, e.g.
+  `[{"no": "1", "nama": "MAHASISWA CONTOH", "wali_setuju": "Ya", ...}]`.
 - `error` — set only when the Siakang server itself failed to render the tab;
   the rest of the response stays usable.
+
+### RPS & Bahan Ajar (`rps_bahan_ajar`)
+
+This tab is a page with four named sections instead of a single table, so it
+uses a `sections` map keyed by the section's `<h4>` heading (snake_cased).
+Every section is always present, even when empty. Tables inside become
+records; non-table content (download link cards) becomes
+`{"judul": ..., "url": ...}` rows.
+
+```python
+{
+    "bahan_ajar":    [ {"judul": "Konsep Resiko", "url": ""} ],
+    "rps_materi":    [ {"no": "1", "cpmk": "...", "materi": "...", "metode_penyampaian": "...", "alokasi_waktu": "..."} ],
+    "evaluasi_aspek":[ {"no": "1", "aspek_evaluasi": "Aktivitas Partisipatif", "rencana_evaluasi": "...", "bobot": "50"} ],
+    "rps_referensi": [ {"no": "1", "referensi": "G. Stoneburner, ..."} ],
+}
+```
+
+### Jurnal Perkuliahan (`jurnal_perkuliahan`)
+
+Attendance here is a radio group (Hadir / Izin / Sakit / Tanpa Alasan); the
+selected option is reported. Keterangan is `"-"` until a lecturer fills it in.
+The tab also carries the meeting picker, the lecture topic and the RPS Materi
+selection (both set by the lecturer, empty until then).
+
+```python
+{
+    "pertemuan": [                       # meeting picker options
+        {"id": "", "label": "-- Pilih Pertemuan"},
+        {"id": "019bde9b-...", "label": "Senin, PK. 09:10 - 10:50 || Ruang ..."},
+    ],
+    "kuliah_id": "",                     # selected meeting ('' = picker default)
+    "topik": "",                         # lecture topic text
+    "rps_materi": "",                    # selected RPS Materi label
+    "rows": [{
+        "no": "1",
+        "nama": "MAHASISWA CONTOH",
+        "nim": "3337000001",
+        "status_registrasi": "Aktif",
+        "status_kehadiran": "Tanpa Alasan",   # one of Hadir / Izin / Sakit / Tanpa Alasan
+        "keterangan": "-",
+    }],
+}
+```
+
+Pass `kuliah_id=<id from pertemuan>` to `get_detail` to re-render the
+attendance table for that meeting.
 
 ::: tip detail=True shortcut
 Instead of looping manually, call

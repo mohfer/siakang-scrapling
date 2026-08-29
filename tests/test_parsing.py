@@ -5,6 +5,9 @@ import json
 from siakang.client import (
     SiakangClient,
     _clean,
+    _parse_jurnal,
+    _parse_jurnal_meta,
+    _parse_rps_sections,
     _parse_tables,
     _split_peserta_nim,
     _strip_tags,
@@ -108,17 +111,90 @@ class TestHelpers:
                  "<tbody><tr><td>1</td><td>2</td></tr>"
                  "<tr><td></td><td></td></tr></tbody></table>")
         tables = _parse_tables(table)
-        assert tables == [{"headers": ["A", "B"], "rows": [["1", "2"]]}]
+        assert tables == [[{"a": "1", "b": "2"}]]
 
     def test_parse_tables_multiple_and_empty(self):
         html = "<table></table><table><tbody><tr><td>x</td></tr></tbody></table><p>hi</p>"
         tables = _parse_tables(html)
         assert len(tables) == 1
-        assert tables[0]["rows"] == [["x"]]
+        assert tables[0] == [{"value": "x"}]
+
+    def test_parse_rps_sections_keeps_heading_order_and_empty(self):
+        html = (
+            '<h4 class="header-title">Bahan Ajar</h4>'
+            '<a href="/f/1" class="fw-bold">Konsep Resiko</a>'
+            '<a href="/f/1/download"><i class="dripicons-download"></i></a>'
+            '<h4 class="header-title">RPS Materi</h4>'
+            '<table><thead><tr><th>No</th></tr></thead><tbody></tbody></table>'
+            '<h4 class="header-title">Evaluasi Aspek</h4>'
+            '<table><thead><tr><th>Aspek Evaluasi</th></tr></thead><tbody>'
+            '<tr><td>Ujian Akhir Semester</td></tr></tbody></table>'
+        )
+        out = _parse_rps_sections(html)
+        assert list(out) == ["bahan_ajar", "rps_materi", "evaluasi_aspek"]
+        assert out["bahan_ajar"] == [{"judul": "Konsep Resiko", "url": "/f/1"}]
+        assert out["rps_materi"] == []
+        assert out["evaluasi_aspek"] == [{"aspek_evaluasi": "Ujian Akhir Semester"}]
 
     def test_split_peserta_nim(self):
-        tables = [{"headers": ["No", "Nama"], "rows": [["1", "MAHASISWA CONTOH 3337000001"], ["2", "Budi"]]}]
+        tables = [[{"no": "1", "nama": "MAHASISWA CONTOH 3337000001"},
+                   {"no": "2", "nama": "Budi"}]]
         out = _split_peserta_nim(tables)
-        assert out[0]["headers"] == ["No", "Nama", "NIM"]
-        assert out[0]["rows"][0] == ["1", "MAHASISWA CONTOH", "3337000001"]
-        assert out[0]["rows"][1] == ["2", "Budi", ""]
+        assert list(out[0][0]) == ["no", "nama", "nim"]
+        assert out[0][0] == {"no": "1", "nama": "MAHASISWA CONTOH", "nim": "3337000001"}
+        assert out[0][1] == {"no": "2", "nama": "Budi", "nim": ""}
+
+    def test_parse_jurnal_checked_radio_and_keterangan(self):
+        def radio(v, label, checked=False):
+            chk = " checked" if checked else ""
+            return (f'<td><div class="form-check"><input class="form-check-input" type="radio" '
+                    f'value="{v}" id="{label}-s1"{chk} disabled>'
+                    f'<label for="{label}-s1">{label}</label></div></td>')
+        html = (
+            "<table><thead><tr><th>No</th><th>Nama</th><th>Status Registrasi</th>"
+            '<th colspan="4">Status Kehadiran</th><th colspan="4">Keterangan</th></tr></thead><tbody>'
+            "<tr><td>1</td><td><h5>MAHASISWA CONTOH</h5><small>"
+            '<span class="badge">3337000001</span></small></td>'
+            '<td><span class="badge">Aktif</span></td>'
+            + radio("H", "hadir") + radio("I", "izin") + radio("S", "sakit")
+            + radio("A", "Tanpa Alasan", True)
+            + '<td><p class="text-muted mb-0">-</p></td></tr>'
+            "</tbody></table>"
+        )
+        out = _parse_jurnal(html)
+        assert out == [{
+            "no": "1",
+            "nama": "MAHASISWA CONTOH",
+            "nim": "3337000001",
+            "status_registrasi": "Aktif",
+            "status_kehadiran": "Tanpa Alasan",
+            "keterangan": "-",
+        }]
+
+    def test_parse_jurnal_meta_picker_topic_and_rps_materi(self):
+        html = (
+            '<select class="form-select" wire:model.live="kuliah_id">'
+            '<option value="" selected>-- Pilih Pertemuan</option>'
+            '<option value="m1">Senin, PK. 09:10 - 10:50 || Ruang A</option>'
+            '</select>'
+            '<textarea class="form-control" wire:model="topik">Topik pertama</textarea>'
+            '<select class="form-select" wire:model="rps_materi_id">'
+            '<option value="">Pilih Salah Satu</option>'
+            '<option value="r1" selected>Konsep Resiko I</option>'
+            '</select>'
+        )
+        meta = _parse_jurnal_meta(html)
+        assert meta == {
+            "pertemuan": [{"id": "", "label": "-- Pilih Pertemuan"},
+                          {"id": "m1", "label": "Senin, PK. 09:10 - 10:50 || Ruang A"}],
+            "kuliah_id": "",
+            "topik": "Topik pertama",
+            "rps_materi": "Konsep Resiko I",
+        }
+
+    def test_split_peserta_nim_reorders_when_nim_is_separate_column(self):
+        """nim right after nama even when the site already provides a nim column."""
+        tables = [[{"no": "1", "nama": "MAHASISWA CONTOH",
+                    "wali_setuju": "Ya", "nim": "3337000001"}]]
+        out = _split_peserta_nim(tables)
+        assert list(out[0][0]) == ["no", "nama", "nim", "wali_setuju"]

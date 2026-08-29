@@ -63,8 +63,8 @@ for s in client.list_semesters():
 
 ```python
 detail = client.get_detail(rows[0]["schedule_id"])
-print(detail["header"])                          # Kelas, Dosen, Ruang dan Waktu, ...
-print(detail["tabs"]["peserta"]["tables"])       # participant table
+print(detail["header"])                          # kelas, dosen, ruang_dan_waktu, ...
+print(detail["tabs"]["peserta"]["rows"])         # participant rows
 ```
 
 ## Next steps
