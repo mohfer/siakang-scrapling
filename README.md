@@ -21,7 +21,7 @@ requests with browser impersonation. No headless browser, no JavaScript engine.
 - 🎓 **Study Results** — per-course scores, letters, plus semester GPA (IP) and cumulative GPA (IPK)
 - 🗓️ **Semester List** — every semester your account can switch to, with codes and UUIDs
 - 🔍 **Course Details** — participants, RPS documents, journals and attendance recaps
-- ⚡ **Fast & Lightweight** — Livewire calls replayed directly; a full schedule takes ~2 seconds
+- ⚡ **Fast & Lightweight** — Livewire calls replayed directly; a semester schedule loads in ~0.7s with a saved session
 - 🧩 **Consistent Responses** — optional `{code, message, data}` envelope for app integration
 
 ## Installation
