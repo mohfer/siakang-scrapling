@@ -19,7 +19,7 @@ def fetch_schedule(email: str, password: str, semester: str | None, detail: bool
 def main():
     parser = argparse.ArgumentParser(description="Scrape Siakang class schedule")
     parser.add_argument("--semester", default=os.getenv("SEMESTER"), help="Semester code, e.g. 20252")
-    parser.add_argument("--detail", action="store_true", help="Include full detail pages for every course (slow)")
+    parser.add_argument("--detail", action="store_true", help="Include full detail pages for every course (fetched in parallel)")
     parser.add_argument("--json", action="store_true", help="Output full JSON instead of a compact table")
     args = parser.parse_args()
 

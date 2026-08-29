@@ -18,7 +18,7 @@ Class schedule from `/jadwal_perkuliahan`.
 uv run python examples/scrape_schedule.py                    # one line per course
 uv run python examples/scrape_schedule.py --json             # full JSON envelope
 uv run python examples/scrape_schedule.py --semester 20252   # pick a semester
-uv run python examples/scrape_schedule.py --detail --json    # incl. detail pages (slow)
+uv run python examples/scrape_schedule.py --detail --json    # incl. detail pages (parallel, ~3x faster than before)
 ```
 
 ## scrape_grades.py
