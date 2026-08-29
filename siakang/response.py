@@ -50,10 +50,6 @@ def success(data: Any = None, message: str = "Success") -> ApiResponse:
     return ApiResponse(CODE_OK, message, data)
 
 
-def error(message: str, code: int = CODE_SERVER_ERROR, data: Any = None) -> ApiResponse:
-    return ApiResponse(code, message, data)
-
-
 def api_response(func):
     """Decorator turning a siakang call into an ApiResponse.
 

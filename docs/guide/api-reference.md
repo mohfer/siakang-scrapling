@@ -18,13 +18,12 @@ called on a client opened this way — otherwise you get the error
 ## Constructor Options
 
 ```python
-SiakangClient(email, password, session_file=None, http2=False)
+SiakangClient(email, password, session_file=None)
 ```
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `session_file` | `str \| Path \| bool \| None` | `None` | Persists login cookies so later runs skip the login round-trip. `True` uses a per-account file derived from the email hash (each account gets its own file); a path string uses that exact file. Expired sessions automatically fall back to a full login. |
-| `http2` | `bool` | `False` | Prefer HTTP/2 (`V2TLS`) on every request. Measured no real gain against Siakang and it swaps the TLS fingerprint, so leave off unless you have a reason. |
 
 ```python
 from siakang import SiakangClient

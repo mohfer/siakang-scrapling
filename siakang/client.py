@@ -10,7 +10,6 @@ from concurrent.futures import ThreadPoolExecutor
 from html import unescape
 from pathlib import Path
 
-from curl_cffi import CurlHttpVersion
 from scrapling.fetchers import FetcherSession
 from scrapling.parser import Selector
 
@@ -204,8 +203,7 @@ def _parse_rps_sections(html: str) -> dict[str, list[dict]]:
 
 class SiakangClient:
     def __init__(self, email: str, password: str,
-                 session_file: str | Path | bool | None = None,
-                 http2: bool = False):
+                 session_file: str | Path | bool | None = None):
         """
         session_file: persist login cookies so later runs skip the login round-trip.
                True  -> default path derived from the email hash, so each account
@@ -214,14 +212,10 @@ class SiakangClient:
                         each other; don't do that for different accounts).
                None  -> disabled (default).
                The file holds a bearer credential — keep it out of git.
-        http2: prefer HTTP/2 on every request (fewer round-trips over one
-               connection). Off by default: it swaps the TLS fingerprint and
-               some WAFs reject it — enable only if the server plays along.
         """
         self.email = email
         self.password = password
         self.session_file = session_file
-        self.http2 = http2
         self._session = None
         self._semesters_cache: list[dict] | None = None
 
@@ -292,22 +286,16 @@ class SiakangClient:
 
     @staticmethod
     def _resp_status(resp) -> int:
-        """HTTP status across scrapling and raw curl_cffi responses."""
-        return getattr(resp, "status", None) or resp.status_code
+        """HTTP status from a scrapling Response."""
+        return resp.status
 
     @staticmethod
     def _resp_text(resp) -> str:
-        """Body text across scrapling and raw curl_cffi responses."""
-        body = getattr(resp, "body", None)
+        """Body text from a scrapling Response."""
+        body = resp.body
         if isinstance(body, bytes):
             return body.decode()
-        html_content = getattr(resp, "html_content", None)
-        if html_content is not None:
-            return html_content
-        return resp.text
-
-    def _request_kwargs(self) -> dict:
-        return {"http_version": CurlHttpVersion.V2TLS} if self.http2 else {}
+        return resp.html_content
 
     def _get_page(self, url: str, referer: str, session=None) -> str:
         if self._session is None:
@@ -315,7 +303,7 @@ class SiakangClient:
         sess = session or self._session
         raw = ""
         for attempt in (1, 2):  # Cloudflare occasionally interjects a challenge page; retry once
-            r = sess.get(url, headers={"referer": referer}, **self._request_kwargs())
+            r = sess.get(url, headers={"referer": referer})
             if r.status != 200:
                 raise SiakangUpstreamError(f"HTTP {r.status} on {url}")
             raw = r.html_content
@@ -410,7 +398,6 @@ class SiakangClient:
             f"{BASE}/livewire/update",
             json=payload,
             headers={"referer": url, "X-CSRF-TOKEN": payload["_token"]},
-            **self._request_kwargs(),
         )
         if self._resp_status(resp) != 200:
             raise SiakangUpstreamError(f"livewire/update HTTP {self._resp_status(resp)}")
@@ -435,7 +422,6 @@ class SiakangClient:
             f"{BASE}/livewire/update",
             json=payload,
             headers={"referer": url, "X-CSRF-TOKEN": payload["_token"]},
-            **self._request_kwargs(),
         )
         if self._resp_status(resp) != 200:
             raise SiakangUpstreamError(f"livewire/update HTTP {self._resp_status(resp)}")
@@ -495,6 +481,16 @@ class SiakangClient:
 
     # -- grades ---------------------------------------------------------------
 
+    def _select_semester(self, semester: str):
+        """Switch the session to a semester code, raising if it doesn't exist."""
+        target = next((s for s in self.list_semesters() if s["code"] == semester), None)
+        if not target:
+            raise SiakangNotFoundError(f"Semester {semester} not found")
+        self._session.get(
+            f"{BASE}/dashboard/change-semester/{target['id']}",
+            headers={"referer": f"{BASE}/dashboard/list-semester"},
+        )
+
     def get_grades(self, semester: str | None = None) -> dict:
         """Study results from /hasil-studi.
 
@@ -508,13 +504,7 @@ class SiakangClient:
         lecturers, score, letter.
         """
         if semester is not None:
-            target = next((s for s in self.list_semesters() if s["code"] == semester), None)
-            if not target:
-                raise SiakangNotFoundError(f"Semester {semester} not found")
-            self._session.get(
-                f"{BASE}/dashboard/change-semester/{target['id']}",
-                headers={"referer": f"{BASE}/dashboard/list-semester"},
-            )
+            self._select_semester(semester)
 
         raw = self._get_page(f"{BASE}/hasil-studi", f"{BASE}/dashboard/dashboard-akademik")
         html = Selector(raw)
@@ -561,13 +551,7 @@ class SiakangClient:
         Returns a list of dicts; see README for the exact shape.
         """
         if semester is not None:
-            target = next((s for s in self.list_semesters() if s["code"] == semester), None)
-            if not target:
-                raise SiakangNotFoundError(f"Semester {semester} not found")
-            self._session.get(
-                f"{BASE}/dashboard/change-semester/{target['id']}",
-                headers={"referer": f"{BASE}/dashboard/list-semester"},
-            )
+            self._select_semester(semester)
 
         raw = self._get_page(f"{BASE}/jadwal_perkuliahan", f"{BASE}/dashboard/dashboard-akademik")
         names = {}

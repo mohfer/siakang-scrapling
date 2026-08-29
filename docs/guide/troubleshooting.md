@@ -32,9 +32,7 @@ semester to confirm parsing works.
 ## Cloudflare challenge pages
 
 Rare over plain HTTP. `_get_page` detects them and retries once; repeated
-failures surface as `SiakangUpstreamError`. If Cloudflare is ever tightened,
-fall back to `examples/scrape_schedule_browser.py` (Camoufox) and port its data
-into the same shapes.
+failures surface as `SiakangUpstreamError`.
 
 ## Running from another machine
 

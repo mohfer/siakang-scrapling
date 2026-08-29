@@ -58,12 +58,3 @@ uv run python examples/scrape_detail.py --json                              # fu
 rps_bahan_ajar peserta jurnal_perkuliahan rekap_jurnal_perkuliahan` for
 everything. `--kuliah-id` selects a specific meeting on the Jurnal tab (id from
 that tab's `pertemuan` list).
-
-## scrape_schedule_browser.py
-
-Fallback that drives a real Camoufox browser. Only useful if the plain-HTTP path
-ever gets blocked; it is slower and heavier. Requires the same `.env`.
-
-```bash
-uv run python examples/scrape_schedule_browser.py
-```

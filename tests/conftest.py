@@ -83,13 +83,6 @@ class FakeSession:
                 return handler(url, kwargs)
         raise AssertionError(f"unrouted POST {url}")
 
-    def _curl_session(self):  # pragma: no cover - never called as attribute this way
-        pass
-
-    @property
-    def curl_session(self):
-        return FakeCurlSession()
-
     def close(self):
         self.closed = True
 
