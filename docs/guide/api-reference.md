@@ -215,7 +215,9 @@ This tab is a page with four named sections instead of a single table, so it
 uses a `sections` map keyed by the section's `<h4>` heading (snake_cased).
 Every section is always present, even when empty. Tables inside become
 records; non-table content (download link cards) becomes
-`{"judul": ..., "url": ...}` rows.
+`{"judul": ..., "url": ...}` rows. `belum_rps` is `true` when the schedule has
+no RPS yet (the site shows a "Jadwal ini belum memiliki RPS" alert and an
+empty `daftar_rps` section).
 
 ```python
 {
@@ -223,6 +225,7 @@ records; non-table content (download link cards) becomes
     "rps_materi":    [ {"no": "1", "cpmk": "...", "materi": "...", "metode_penyampaian": "...", "alokasi_waktu": "..."} ],
     "evaluasi_aspek":[ {"no": "1", "aspek_evaluasi": "Aktivitas Partisipatif", "rencana_evaluasi": "...", "bobot": "50"} ],
     "rps_referensi": [ {"no": "1", "referensi": "G. Stoneburner, ..."} ],
+    "belum_rps": False,
 }
 ```
 

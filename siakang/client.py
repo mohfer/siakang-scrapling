@@ -178,7 +178,10 @@ def _parse_rps_sections(html: str) -> dict[str, list[dict]]:
             continue
         tables = _parse_tables(body)
         if Selector(body).css("table"):
-            sections[name] = [row for t in tables for row in t]
+            rows = [row for t in tables for row in t]
+            # an empty table renders a single "Data tidak tersedia" placeholder row
+            rows = [r for r in rows if "data tidak tersedia" not in _strip_tags(str(r)).lower()]
+            sections[name] = rows
             continue
         records = [{"judul": _clean(a), "url": a.attrib.get("href", "")}
                    for a in Selector(body).css("a")]
@@ -615,6 +618,7 @@ class SiakangClient:
                 content_html = re.sub(r"<script.*?</script>", "", content_html, flags=re.S)
                 if tab == "rps_bahan_ajar":
                     entry["sections"] = _parse_rps_sections(content_html)
+                    entry["belum_rps"] = "belum memiliki rps" in _strip_tags(content_html).lower()
                 elif tab == "jurnal_perkuliahan":
                     entry.update(_parse_jurnal_meta(content_html))
                     if kuliah_id:

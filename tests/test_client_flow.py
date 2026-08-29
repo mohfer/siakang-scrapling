@@ -345,7 +345,7 @@ class TestGetGrades:
 
 
 class TestGetDetail:
-    def _handlers(self):
+    def _handlers(self, rps_html=RPS_SECTIONS_HTML):
         def livewire(u, k):
             body = k["json"]
             comp = body["components"][0]
@@ -358,7 +358,7 @@ class TestGetDetail:
                 if name == "pengajaran.detail-kuliah":
                     return FakeResponse(lw_response({name: HEADER_HTML}), content_type="json")
                 if name == "pengajaran.rps-bahan-ajar-extra":
-                    return FakeResponse(lw_response({name: RPS_SECTIONS_HTML}), content_type="json")
+                    return FakeResponse(lw_response({name: rps_html}), content_type="json")
                 return FakeResponse("err", status=500, content_type="json")
             updates = comp.get("updates", {})
             tab = updates.get("active_menu")
@@ -397,6 +397,19 @@ class TestGetDetail:
         assert rps["sections"]["bahan_ajar"] == [{"judul": "Konsep Resiko", "url": ""}]
         assert rps["sections"]["rps_materi"] == []
         assert rps["sections"]["evaluasi_aspek"][0]["aspek_evaluasi"] == "Ujian Akhir Semester"
+        assert rps["belum_rps"] is False
+
+    def test_rps_empty_marks_belum_rps(self, monkeypatch):
+        empty = ('<div class="alert alert-danger"><h4>Whops</h4>'
+                 '<li>Jadwal ini belum memiliki RPS</li></div>'
+                 '<h4 class="header-title">Daftar RPS</h4>'
+                 '<table><thead><tr><th>Extra</th><th>Dibuat Oleh</th></tr></thead>'
+                 '<tbody><tr><td colspan="2">Data tidak tersedia</td></tr></tbody></table>')
+        client, _ = open_client(monkeypatch, self._handlers(rps_html=empty))
+        d = client.get_detail(SCHEDULE_ID, tab_keys=["rps_bahan_ajar"])
+        rps = d["tabs"]["rps_bahan_ajar"]
+        assert rps["belum_rps"] is True
+        assert rps["sections"] == {"daftar_rps": []}
 
     def test_tabs_arg_fetches_only_requested_tabs(self, monkeypatch):
         client, _ = open_client(monkeypatch, self._handlers())

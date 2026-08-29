@@ -136,6 +136,16 @@ class TestHelpers:
         assert out["rps_materi"] == []
         assert out["evaluasi_aspek"] == [{"aspek_evaluasi": "Ujian Akhir Semester"}]
 
+    def test_parse_rps_sections_empty_table_placeholder(self):
+        html = (
+            '<h4 class="header-title">Daftar RPS</h4>'
+            '<table><thead><tr><th>Extra</th><th>Dibuat Oleh</th><th>Publik?</th>'
+            '<th>Aksi</th></tr></thead><tbody>'
+            '<tr><td colspan="4"><p class="text-danger text-center mb-0">Data tidak tersedia</p></td></tr>'
+            '</tbody></table>'
+        )
+        assert _parse_rps_sections(html) == {"daftar_rps": []}
+
     def test_split_peserta_nim(self):
         tables = [[{"no": "1", "nama": "MAHASISWA CONTOH 3337000001"},
                    {"no": "2", "nama": "Budi"}]]
