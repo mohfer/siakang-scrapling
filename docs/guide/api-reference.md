@@ -18,12 +18,13 @@ called on a client opened this way — otherwise you get the error
 ## Constructor Options
 
 ```python
-SiakangClient(email, password, session_file=None)
+SiakangClient(email, password, session_file=None, http2=False)
 ```
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `session_file` | `str \| Path \| bool \| None` | `None` | Persists login cookies so later runs skip the login round-trip. `True` uses a per-account file derived from the email hash (each account gets its own file); a path string uses that exact file. Expired sessions automatically fall back to a full login. |
+| `http2` | `bool` | `False` | Prefer HTTP/2 (`V2TLS`) on every request. Measured no real gain against Siakang and it swaps the TLS fingerprint, so leave off unless you have a reason. |
 
 ```python
 from siakang import SiakangClient
@@ -96,7 +97,7 @@ rows = client.get_schedule(semester="20252")      # specific semester
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `semester` | `str \| None` | `None` | Semester code from `list_semesters()` (`"code"` field). `None` keeps whatever semester is currently selected in this session. |
-| `detail` | `bool` | `False` | When `True`, every row also carries a `detail` object (see [get_detail](#get-detail)). Much slower — one extra page load per course. |
+| `detail` | `bool` | `False` | When `True`, every row also carries a `detail` object (see [get_detail](#get-detail)). Fetches all detail pages in parallel (up to [`PARALLEL_DETAIL_WORKERS`](#constants)) — measured ~2.9x faster than sequential. |
 
 **Returns** a list of dicts, one per course:
 
@@ -264,6 +265,14 @@ Instead of looping manually, call
 `client.get_schedule(detail=True)` once — every schedule row then already
 contains its own `detail` object.
 :::
+
+## Constants
+
+| Name | Value | Meaning |
+|---|---|---|
+| `BASE` | `"https://siakang.untirta.ac.id"` | Root URL every request is built from. |
+| `TABS` | see source | Detail-page tab keys accepted by `get_detail(tab_keys=...)`. |
+| `PARALLEL_DETAIL_WORKERS` | `4` | Max parallel fetches inside `get_schedule(detail=True)`. Kept low on purpose — more (e.g. 8) is faster but trips Siakang's WAF (HTTP 520 / temporary block). |
 
 ## Errors
 

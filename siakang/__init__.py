@@ -3,6 +3,7 @@
 from .client import (
     BASE,
     TABS,
+    PARALLEL_DETAIL_WORKERS,
     SiakangAuthError,
     SiakangClient,
     SiakangError,
@@ -21,4 +22,5 @@ __all__ = [
     "api_response",
     "BASE",
     "TABS",
+    "PARALLEL_DETAIL_WORKERS",
 ]

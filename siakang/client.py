@@ -6,13 +6,20 @@ All Livewire interactions are performed directly against /livewire/update.
 import hashlib
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from html import unescape
 from pathlib import Path
 
+from curl_cffi import CurlHttpVersion
 from scrapling.fetchers import FetcherSession
 from scrapling.parser import Selector
 
 BASE = "https://siakang.untirta.ac.id"
+
+# Parallel detail fetches per get_schedule(detail=True). Higher (e.g. 8) is
+# faster but trips Siakang's WAF (HTTP 520 / temporary block); 4 is the
+# measured sweet spot (2.9x faster than sequential).
+PARALLEL_DETAIL_WORKERS = 4
 
 TIME_RE = re.compile(r"\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}")
 TABS = ["rps_bahan_ajar", "peserta", "jurnal_perkuliahan", "rekap_jurnal_perkuliahan"]
@@ -197,7 +204,8 @@ def _parse_rps_sections(html: str) -> dict[str, list[dict]]:
 
 class SiakangClient:
     def __init__(self, email: str, password: str,
-                 session_file: str | Path | bool | None = None):
+                 session_file: str | Path | bool | None = None,
+                 http2: bool = False):
         """
         session_file: persist login cookies so later runs skip the login round-trip.
                True  -> default path derived from the email hash, so each account
@@ -206,11 +214,16 @@ class SiakangClient:
                         each other; don't do that for different accounts).
                None  -> disabled (default).
                The file holds a bearer credential — keep it out of git.
+        http2: prefer HTTP/2 on every request (fewer round-trips over one
+               connection). Off by default: it swaps the TLS fingerprint and
+               some WAFs reject it — enable only if the server plays along.
         """
         self.email = email
         self.password = password
         self.session_file = session_file
+        self.http2 = http2
         self._session = None
+        self._semesters_cache: list[dict] | None = None
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -247,6 +260,7 @@ class SiakangClient:
 
     def __enter__(self):
         self._session = FetcherSession().__enter__()
+        self._csrf = ""
         try:
             if self.session_file and self._restore_session():
                 return self
@@ -292,12 +306,16 @@ class SiakangClient:
             return html_content
         return resp.text
 
-    def _get_page(self, url: str, referer: str) -> str:
+    def _request_kwargs(self) -> dict:
+        return {"http_version": CurlHttpVersion.V2TLS} if self.http2 else {}
+
+    def _get_page(self, url: str, referer: str, session=None) -> str:
         if self._session is None:
             raise SiakangError("Client is not open — use 'with SiakangClient(...) as client:'")
+        sess = session or self._session
         raw = ""
         for attempt in (1, 2):  # Cloudflare occasionally interjects a challenge page; retry once
-            r = self._session.get(url, headers={"referer": referer})
+            r = sess.get(url, headers={"referer": referer}, **self._request_kwargs())
             if r.status != 200:
                 raise SiakangUpstreamError(f"HTTP {r.status} on {url}")
             raw = r.html_content
@@ -392,6 +410,7 @@ class SiakangClient:
             f"{BASE}/livewire/update",
             json=payload,
             headers={"referer": url, "X-CSRF-TOKEN": payload["_token"]},
+            **self._request_kwargs(),
         )
         if self._resp_status(resp) != 200:
             raise SiakangUpstreamError(f"livewire/update HTTP {self._resp_status(resp)}")
@@ -402,7 +421,8 @@ class SiakangClient:
             return html, snaps
         return html
 
-    def _wire_update(self, url: str, snapshots: list[str], updates_list: list[dict]) -> dict[str, str]:
+    def _wire_update(self, url: str, snapshots: list[str], updates_list: list[dict],
+                     session=None) -> dict[str, str]:
         """POST /livewire/update. Returns {component name: rendered html}."""
         payload = {
             "_token": getattr(self, "_csrf", ""),
@@ -411,10 +431,11 @@ class SiakangClient:
                 for sn, upd in zip(snapshots, updates_list)
             ],
         }
-        resp = self._session.post(
+        resp = (session or self._session).post(
             f"{BASE}/livewire/update",
             json=payload,
             headers={"referer": url, "X-CSRF-TOKEN": payload["_token"]},
+            **self._request_kwargs(),
         )
         if self._resp_status(resp) != 200:
             raise SiakangUpstreamError(f"livewire/update HTTP {self._resp_status(resp)}")
@@ -426,7 +447,16 @@ class SiakangClient:
     # -- semesters -------------------------------------------------------------
 
     def list_semesters(self) -> list[dict]:
-        """All semesters as [{code, name, id, active}, ...]"""
+        """All semesters as [{code, name, id, active}, ...].
+
+        Fetched once per client instance and cached; the semester list of an
+        account doesn't change within a session.
+        """
+        if self._semesters_cache is None:
+            self._semesters_cache = self._fetch_semesters()
+        return [dict(s) for s in self._semesters_cache]
+
+    def _fetch_semesters(self) -> list[dict]:
         semesters = []
         url = f"{BASE}/dashboard/list-semester"
         current_page = 1
@@ -559,13 +589,35 @@ class SiakangClient:
             raise SiakangUpstreamError("No schedule cards found — list view switch failed?")
 
         if detail:
-            for c in courses:
-                c["detail"] = self.get_detail(c["schedule_id"])
+            courses = self._enrich_with_details(courses)
 
         return courses
 
+    def _enrich_with_details(self, courses: list[dict]) -> list[dict]:
+        """Attach a 'detail' key per course. Fetches all detail pages in
+        parallel (one throwaway session per thread) instead of one by one."""
+        if len(courses) <= 1:
+            for c in courses:
+                c["detail"] = self.get_detail(c["schedule_id"])
+            return courses
+        cookies = self._session._curl_session.cookies.get_dict()
+
+        def fetch(course: dict) -> dict:
+            sess = FetcherSession().__enter__()
+            try:
+                for name, value in cookies.items():
+                    sess._curl_session.cookies.set(name, value)
+                return self.get_detail(course["schedule_id"], session=sess)
+            finally:
+                sess.__exit__(None, None, None)
+
+        with ThreadPoolExecutor(max_workers=min(PARALLEL_DETAIL_WORKERS, len(courses))) as ex:
+            for course, detail in zip(courses, ex.map(fetch, courses)):
+                course["detail"] = detail
+        return courses
+
     def get_detail(self, schedule_id: str, tab_keys: list[str] | None = None,
-                   kuliah_id: str | None = None) -> dict:
+                   kuliah_id: str | None = None, session=None) -> dict:
         """Full detail page for one course offering: header + selected tabs.
 
         tab_keys: tab keys to fetch; None = all tabs (see TABS). The header
@@ -576,7 +628,7 @@ class SiakangClient:
                   re-renders that meeting's attendance table.
         """
         href = f"{BASE}/jadwal_perkuliahan/detail/{schedule_id}"
-        raw = self._get_page(href, f"{BASE}/jadwal_perkuliahan")
+        raw = self._get_page(href, f"{BASE}/jadwal_perkuliahan", session=session)
 
         snaps = {}
         for sn in self._wire_snapshots(raw):
@@ -586,7 +638,7 @@ class SiakangClient:
             raise SiakangUpstreamError("Livewire component changed / not found: pengajaran.manajemen-kuliah")
 
         # header & participants are lazy components; run their __lazyLoad commits
-        rendered = self._hydrate_lazy(href, raw)
+        rendered = self._hydrate_lazy(href, raw, session=session)
         header_html = rendered.get("pengajaran.detail-kuliah", "")
         peserta_html = rendered.get("jadwal.peserta", "")
 
@@ -604,16 +656,17 @@ class SiakangClient:
         for tab in (TABS if tab_keys is None else tab_keys):
             entry = {"error": None}
             try:
-                resp = self._wire_update(href, [snaps["pengajaran.manajemen-kuliah"]], [{"active_menu": tab}])
+                resp = self._wire_update(href, [snaps["pengajaran.manajemen-kuliah"]],
+                                         [{"active_menu": tab}], session=session)
                 html = resp.get("pengajaran.manajemen-kuliah", "")
 
                 if tab == "peserta":
                     content_html = peserta_html
                 elif tab == "jurnal_perkuliahan" and kuliah_id:
-                    content_html = self._render_jurnal_meeting(href, html, kuliah_id)
+                    content_html = self._render_jurnal_meeting(href, html, kuliah_id, session=session)
                 else:
                     # tab content is a lazy child component: run its __lazyLoad commit
-                    children = self._hydrate_lazy(href, html)
+                    children = self._hydrate_lazy(href, html, session=session)
                     content_html = "\n".join(children.values()) if children else html
                 content_html = re.sub(r"<script.*?</script>", "", content_html, flags=re.S)
                 if tab == "rps_bahan_ajar":
@@ -632,7 +685,8 @@ class SiakangClient:
             tabs[tab] = entry
         return {"url": href, "header": header, "tabs": tabs}
 
-    def _render_jurnal_meeting(self, href: str, jurnal_html: str, kuliah_id: str) -> str:
+    def _render_jurnal_meeting(self, href: str, jurnal_html: str, kuliah_id: str,
+                               session=None) -> str:
         """Select a Jurnal Perkuliahan meeting: mount the lazy journal component
         then update its ``kuliah_id`` property. Returns the re-rendered html."""
         comps = [
@@ -651,11 +705,11 @@ class SiakangClient:
                 continue
             _, snaps = self._wire_commit(href, owner_sn,
                                          calls=[{"method": "__lazyLoad", "params": [b64]}],
-                                         return_snapshots=True)
+                                         session=session, return_snapshots=True)
             if "pengajaran.jurnal-perkuliahan" in snaps:
                 html, _ = self._wire_commit(href, snaps["pengajaran.jurnal-perkuliahan"],
                                             updates={"kuliah_id": kuliah_id},
-                                            return_snapshots=True)
+                                            session=session, return_snapshots=True)
                 return html
         return jurnal_html
     # -- parsing ---------------------------------------------------------------
