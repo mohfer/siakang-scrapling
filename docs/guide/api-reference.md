@@ -171,10 +171,20 @@ detail = client.get_detail(sid, tab_keys=["jurnal_perkuliahan"],
 Where do I get a `schedule_id`? From any row of
 [`get_schedule()`](#get-schedule) — it's the `"schedule_id"` field.
 
-`tab_keys` picks which tabs to fetch (default `None` = all). The header card is
-always fetched. Valid keys: `rps_bahan_ajar`, `peserta`,
-`jurnal_perkuliahan`, `rekap_jurnal_perkuliahan` (also exported as
-`siakang.TABS`).
+`tab_keys` picks which tabs to fetch. The header card is always fetched,
+regardless of `tab_keys`.
+
+- `None` (default) → **all four tabs**.
+- `["peserta"]` (or any list of keys) → only those tabs.
+- `[]` (empty list) → **no tabs at all** — the result has an empty
+  `tabs` `{}` and only a `header`. To explicitly skip tabs, pass `[]`.
+
+Valid keys are listed below in [Constants](#constants) (`TABS`).
+
+> **Note:** the library's default (`None` = all tabs) is *not* the same as the
+> CLI. The `scrape_detail.py` tool defaults to **`peserta` only** (see
+> [CLI Examples](./cli)), because it is meant for a quick look. Call
+> `client.get_detail(id, tab_keys=TABS)` if you want every tab from Python.
 
 `kuliah_id` re-selects the meeting on the Jurnal tab. Get ids from the tab's
 own `pertemuan` list (first fetch without `kuliah_id`, then pick an id).
@@ -204,7 +214,9 @@ own `pertemuan` list (first fetch without `kuliah_id`, then pick an id).
 Each tab contains:
 
 - `rows` — flat list of record dicts; every HTML table in the tab is merged
-  into one list, each dict mapping snake_cased header → cell value, e.g.
+  into one list. Each dict maps a table column name → cell value. Column names
+  are lowercased and spaces become underscores, so the header *"Wali Setuju"*
+  becomes the key `wali_setuju`, e.g.
   `[{"no": "1", "nama": "MAHASISWA CONTOH", "wali_setuju": "Ya", ...}]`.
 - `error` — set only when the Siakang server itself failed to render the tab;
   the rest of the response stays usable.
@@ -212,7 +224,8 @@ Each tab contains:
 ### RPS & Bahan Ajar (`rps_bahan_ajar`)
 
 This tab is a page with four named sections instead of a single table, so it
-uses a `sections` map keyed by the section's `<h4>` heading (snake_cased).
+uses a `sections` map keyed by the section's `<h4>` heading (the heading turned
+into a lowercased key with underscores, e.g. *"Bahan Ajar"* → `bahan_ajar`).
 Every section is always present, even when empty. Tables inside become
 records; non-table content (download link cards) becomes
 `{"judul": ..., "url": ...}` rows. `belum_rps` is `true` when the schedule has
@@ -270,7 +283,7 @@ contains its own `detail` object.
 | Name | Value | Meaning |
 |---|---|---|
 | `BASE` | `"https://siakang.untirta.ac.id"` | Root URL every request is built from. |
-| `TABS` | see source | Detail-page tab keys accepted by `get_detail(tab_keys=...)`. |
+| `TABS` | `["rps_bahan_ajar", "peserta", "jurnal_perkuliahan", "rekap_jurnal_perkuliahan"]` | Detail-page tab keys accepted by `get_detail(tab_keys=...)`. The four tabs in order. |
 | `PARALLEL_DETAIL_WORKERS` | `4` | Max parallel fetches inside `get_schedule(detail=True)`. Kept low on purpose — more (e.g. 8) is faster but trips Siakang's WAF (HTTP 520 / temporary block). |
 
 ## Errors

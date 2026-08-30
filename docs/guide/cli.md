@@ -58,3 +58,7 @@ uv run python examples/scrape_detail.py --json                              # fu
 rps_bahan_ajar peserta jurnal_perkuliahan rekap_jurnal_perkuliahan` for
 everything. `--kuliah-id` selects a specific meeting on the Jurnal tab (id from
 that tab's `pertemuan` list).
+
+> **Note:** the CLI default here is `peserta` only, which is *different* from
+> the library's default (`get_detail(id)` returns **all** tabs). See
+> [get_detail](./api-reference) for the library behaviour.

@@ -42,5 +42,5 @@ library never runs JavaScript; instead it replays the HTTP calls Livewire makes:
 | Participants tab | `__lazyLoad` on `jadwal.peserta` |
 | RPS / Journal / Recap tabs | set `active_menu`, then hydrate the child that appears (recursively) |
 
-The parallel class (`Kelas`) only appears on the detail page — the schedule
-list itself does not show it, which is why `get_schedule()` omits it.
+The class label (`Kelas`, e.g. `A24`) only appears on the detail page — the
+schedule list itself does not show it, which is why `get_schedule()` omits it.
